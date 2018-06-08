@@ -4,8 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "app1": "nodemon apps/app1.js"
+    "dev": "nodemon apps/machine_api.js"
   },
   "author": "",
   "license": "ISC",

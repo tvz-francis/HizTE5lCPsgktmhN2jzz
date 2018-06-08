@@ -51,6 +51,34 @@ const config = {
 	database:'APITestDB'
 };
 
+app.post('/api/sales2', (req,res) => {
+	let param = req.body;
+
+	let rules = {
+		'seat_no': 'Required Seat no.'
+	};
+
+	postValidation(rules,param)
+	.then(async () => {
+		const pool = await sql.connect(config);
+
+		let MST_SHOP = await pool.request()
+		.query("SELECT * FROM MST_SHOP;");
+		MST_SHOP = MST_SHOP.recordset[0];
+
+		console.log(MST_SHOP);
+
+		sql.close();
+		res.status(200).end();
+	})
+	.catch(err => {
+		console.log(err);
+		sql.close();
+		res.status(200).send(CNST_ERROR_CODE.error_11)
+	});
+
+});
+
 //#region API-SALES
 app.post('/api/sales', async (req, res) => {
 	let return_json = {};
