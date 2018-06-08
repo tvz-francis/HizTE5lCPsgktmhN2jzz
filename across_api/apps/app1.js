@@ -48,19 +48,8 @@ const config = {
     user:'sa',
 	password:'xyz0',
 	server:'192.168.128.121\\sqlexpress',
-	// database:'POS-_-00141-_-4_04'
 	database:'APITestDB'
-	// database:'POS-_-99997-_-5_2'
-	// database:'POS'
-	// dateStrings: true
 };
-
-// var connection = new sql.ConnectionPool({
-// 	user:'sa',
-// 	password:'xyz0',
-// 	server:'192.168.128.121\\sqlexpress',
-// 	database:'POS-_-00141-_-4_04'
-// });
 
 //#region API-SALES
 app.post('/api/sales', async (req, res) => {
@@ -79,14 +68,11 @@ app.post('/api/sales', async (req, res) => {
 	for(let i in rules) {
 		if(!req.body[i]) {
 			sendError(CNST_ERROR_CODE.error_3,'(API-SALES) POST VALIDATION ERROR\n');
-			// return_json.response = 'ERROR: '+i;
-			// return res.json(return_json);
 		}
 	}
 
 	// POST DATE / END DATE
 	let SEISAN_DATE = dateTimeNow();
-	// let SEISAN_DATE = '2018-04-27 12:57:53';
 
 	let TBL_URIAGE_DTL_CLASS = [];
 	let username = param.username;
@@ -95,8 +81,8 @@ app.post('/api/sales', async (req, res) => {
 	let items = [];
 	return_json.POSTED_DATE = SEISAN_DATE;
 	return_json.SALES_DATA = [];
-	return_json.ALL_TOTAL = 0; // await GET_ALL_TOTAL()
-	return_json.ALL_TAX = 0; //await GET_ALL_TAX(await TAX_RATE(_getDate));
+	return_json.ALL_TOTAL = 0;
+	return_json.ALL_TAX = 0;
 	let member_flg = '';
 	let getSEQ = 0;
 
@@ -143,32 +129,6 @@ app.post('/api/sales', async (req, res) => {
 					ungroupedTblUriageDtlTemp.push(xObj);
 				}
 
-				// console.log(GETEXT_AUTOPACK_HT);
-
-				// let _new_arr = [];
-
-				// for(let x = 0; x < GETEXT_AUTOPACK_HT.length; x++) {
-				// 	if(GETEXT_AUTOPACK_HT[x] != 'undefined') {
-				// 		for(let y = 0; y < GETEXT_AUTOPACK_HT.length; y++) {
-				// 			let xObj = GETEXT_AUTOPACK_HT[x];
-				// 			let yObj = GETEXT_AUTOPACK_HT[y];
-				// 			if(x != y && xObj.ITEM_ID == yObj.ITEM_ID && xObj.ITEM_KBN == yObj.ITEM_KBN && xObj.ITEM_NM == yObj.ITEM_NM && xObj.ITEM_PRICE == yObj.ITEM_PRICE) {
-				// 				GETEXT_AUTOPACK_HT[x].ITEM_QU += GETEXT_AUTOPACK_HT[y].ITEM_QU;
-				// 				GETEXT_AUTOPACK_HT[x].TOTAL_YEN += GETEXT_AUTOPACK_HT[y].TOTAL_YEN;
-				// 				GETEXT_AUTOPACK_HT.splice(y,1,'undefined');
-				// 			}
-				// 		}
-				// 		_new_arr.push(GETEXT_AUTOPACK_HT[x]);
-				// 		GETEXT_AUTOPACK_HT.splice(x,1,'undefined');
-				// 	}
-				// }
-
-				// console.log(_new_arr);
-
-				// let _MERGE_URIAGE_DTL = await MERGE_URIAGE_DTL(GETEXT_AUTOPACK_HT,_hash);
-				// let _DELETE_TEMP_URIAGE_DTL = await DELETE_TEMP_URIAGE_DTL(_hash);
-				// let _ADD_NEW_TEMP_URIAGE_DTL = await ADD_NEW_TEMP_URIAGE_DTL(_MERGE_URIAGE_DTL,_hash);
-
 				let tblUriageData = {
 					"SALES_NO":obj.SALES_NO,
 					"MEMBER_ID":obj.MEMBER_ID,
@@ -185,45 +145,18 @@ app.post('/api/sales', async (req, res) => {
 				return_json.SALES_DATA.push({
 					"TBL_URIAGE":tblUriageData,
 					"TBL_URIAGE_DTL":[]
-			    });
-
-		        // return_json.SALES_DATA.push({
-			    // 	"SEAT_INFO":{
-			    // 		"SEAT_NO" : obj.SEAT_NO,
-			    // 		"SALES_NO" : obj.SALES_NO,
-			    // 		"MEMBER_ID" : obj.MEMBER_ID,
-			    // 		"MEMBER_NM" : obj.MEMBER_NM,
-			    // 		"LOGIN_DATE" : convert_datetime(obj.LOGIN_DATE)
-			    // 	},
-			    // 	"SALES_DTL":{
-			    // 		"TBL_URIAGE":{
-			    // 			"TAX_YEN" : await compute_TAX_YEN(total_price),
-			    // 			"DEPOSIT_RECIEVED" : obj.MAEUKE_YEN
-			    // 		},
-			    // 		"TBL_URIAGE_DTL": await GET_NEW_TEMP_URIAGE_DTL(_hash,obj.SALES_NO)
-			    // 	},
-			    // });
+				});
 			   
 		    }
-			// console.log(ungroupedTblUriageDtlTemp);
-			// grouped SALES_NO
 
 			let groupedSalesNo = await GROUPED_SALES_NO(ungroupedTblUriageDtlTemp);
 			let groupedItem = await GROUPED_ITEM(groupedSalesNo);
 		    return_json.ALL_TOTAL = total_price;
 		    return_json.ALL_TAX = await compute_TAX_YEN(total_price);
-		} 
-		// else {
-
-	    // 	return_error.error = 1;
-    	// 	res.json(return_error);
-    	// 	closeConnection();
-    	// 	return;
-	    // }
+		}
 	    
 	} catch(err) {
 		sendError(CNST_ERROR_CODE.error_11,'get tbl uriage\n'+err);
-		// return err;
 	}
 	res.json(return_json);
     closeConnection();
@@ -269,21 +202,6 @@ app.post('/api/sales', async (req, res) => {
 						}
 						xObj.ITEM_SEQ = SEQ;
 
-						// let uriageDtl = {
-						// 	SALES_NO:xObj.SALES_NO,
-						// 	SEQ:xObj.ITEM_SEQ,
-						// 	ITEM_ID:xObj.ITEM_ID,
-						// 	ITEM_NM:xObj.ITEM_NM,
-						// 	ITEM_KBN:xObj.ITEM_KBN,
-						// 	ITEM_QU:xObj.ITEM_QU,
-						// 	ITEM_PRICE:xObj.ITEM_PRICE,
-						// 	BASE_MIN:xObj.BASE_MIN,
-						// 	TOTAL_YEN:xObj.TOTAL_YEN,
-						// 	SEISAN_DATE:xObj.SEISAN_DATE,
-						// 	SEAT_NO:xObj.SEAT_NO
-						// };
-
-						// append to SALES_DATA.TBL_URIAGE_DTL
 						for(let iSALES_DATA in return_json.SALES_DATA) {
 							let item = return_json.SALES_DATA[iSALES_DATA];
 							if(item.TBL_URIAGE.SALES_NO == xObj.SALES_NO) {
@@ -302,7 +220,7 @@ app.post('/api/sales', async (req, res) => {
 		
 	}
 
-	async function ExCurrentDate(data,edp,uriageDtl,uriage) { // Compute Extension
+	async function ExCurrentDate(data,edp,uriageDtl,uriage) {
 
 		let exItemQu = 0;
 		let exItemPrice = 0;
@@ -311,8 +229,6 @@ app.post('/api/sales', async (req, res) => {
 
 		let endDate = SEISAN_DATE;
 		let index = 0;
-
-		// MAKE TOKEN AND ADD
 		
 		try {
 			for(let i in data) {
@@ -345,8 +261,6 @@ app.post('/api/sales', async (req, res) => {
 					exItemMin = await GET_MAX_SEQ_MINS(obj.EX_ITEM_ID,obj.EX_BASE_MIN,exCurrentDate,endDate);
 					exItemMin = (exItemMin < 0) ? 0 : exItemMin;
 
-					console.log(exItemMin);
-
 					if(exItemMin > 0) {
 						exItemQu = 0;
 						exItemPrice = 0;
@@ -361,19 +275,14 @@ app.post('/api/sales', async (req, res) => {
 						exItemPrice = await GET_EX_PRICE(obj.EX_ITEM_ID,_getWeekFlg,hrFlg,member_flg);
 
 						//Fix Extension Name
-						// getSEQ = (getSEQ == '')?0:getSEQ;
-						// console.log(getSEQ);
-						//let exItemNameFix = (getSEQ == 0)?data[0].ITEM_NM:data[0].ITEM_NM+'('+getSEQ+')';
 						let exItemNameFix = (getSEQ == 0)?obj.EX_ITEM_NM:obj.EX_ITEM_NM+'('+getSEQ+')';
-
-						console.log(exItemNameFix);
 
 						uriageDtlToToken.push({
 							'SALES_NO':uriage.SALES_NO,
 							'SEQ':itemSequence,
 							'SEAT_NO':uriage.SEAT_NO,
 							'ITEM_SEQ':getSEQ,
-							'ITEM_ID':obj.EX_ITEM_ID,//uriageDtl.ITEM_ID,
+							'ITEM_ID':obj.EX_ITEM_ID,
 							'ITEM_NM':exItemNameFix,
 							'ITEM_KBN':1,
 							'TAX_KBN':MST_SHOP.TAX_FLG,
@@ -381,13 +290,11 @@ app.post('/api/sales', async (req, res) => {
 							'ITEM_QU':exItemQu,
 
 							'ITEM_PRICE':exItemPrice,
-							'TOTAL_YEN':(exItemPrice * exItemQu), //  + uriageDtl.ITEM_PRICE
+							'TOTAL_YEN':(exItemPrice * exItemQu),
 							'SEAT_USE_START_DATE':exCurrentDate
 							// then add
 						});
 						itemSequence++;
-
-						// dito na ko. lilito pa sa process
 
 					}
 					index++;
@@ -400,49 +307,47 @@ app.post('/api/sales', async (req, res) => {
 	}
 
 	async function GET_EX_PRICE(exItemId,weekFlg,hrFlg,uriageMemberFlg) {
-		// console.log(exItemId,weekFlg,hrFlg,uriageMemberFlg);
 
 		let SEQ = 0;
 		let price = 0;
 		hrFlg = (hrFlg < 10)?'0'+hrFlg:hrFlg;
 		try {
 			let query = await pool.request()
-	        .input('ITEM_ID', sql.VarChar, exItemId)
-	        .query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = 10");
-	        if(query.recordset.length > 0) {
-	        	for(let i in query.recordset) {
-					let obj = query.recordset[i];
-					SEQ = obj['WEEK_'+hrFlg];
-	        		SEQ = (SEQ == 99)?0:SEQ;
-	        		getSEQ = SEQ;
-	        	}
-	        }
+			.input('ITEM_ID', sql.VarChar, exItemId)
+			.query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = 10");
+			if(query.recordset.length > 0) {
+				for(let i in query.recordset) {
+			let obj = query.recordset[i];
+			SEQ = obj['WEEK_'+hrFlg];
+					SEQ = (SEQ == 99)?0:SEQ;
+					getSEQ = SEQ;
+				}
+			}
 
-	        if(SEQ == 0) {
-	        	let query2 = await pool.request()
-		        .input('ITEM_ID', sql.VarChar, exItemId)
-		        .input('WEEK_FLG', sql.VarChar, weekFlg)
-		        .query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = @WEEK_FLG");
-		        if(query2.recordset.length > 0) {
-		        	for(let i in query2.recordset) {
-						let obj = query2.recordset[i];
-						SEQ = obj['WEEK_'+hrFlg];
-						SEQ = (SEQ == 99)?0:SEQ;
-						getSEQ = SEQ;
-		        	}
-		        }
-	        }
+			if(SEQ == 0) {
+				let query2 = await pool.request()
+				.input('ITEM_ID', sql.VarChar, exItemId)
+				.input('WEEK_FLG', sql.VarChar, weekFlg)
+				.query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = @WEEK_FLG");
+				if(query2.recordset.length > 0) {
+					for(let i in query2.recordset) {
+				let obj = query2.recordset[i];
+				SEQ = obj['WEEK_'+hrFlg];
+				SEQ = (SEQ == 99)?0:SEQ;
+				getSEQ = SEQ;
+					}
+				}
+			}
 
-	        //Get Price
-	        let price_query = await pool.request()
-	        .input('ITEM_ID', sql.VarChar, exItemId)
-	        .input('SEQ', sql.Int, SEQ)
-	        .query("SELECT * FROM MST_EX_SEAT_ITEM WHERE ITEM_ID = @ITEM_ID  AND  SEQ = @SEQ");
+			//Get Price
+			let price_query = await pool.request()
+			.input('ITEM_ID', sql.VarChar, exItemId)
+			.input('SEQ', sql.Int, SEQ)
+			.query("SELECT * FROM MST_EX_SEAT_ITEM WHERE ITEM_ID = @ITEM_ID  AND  SEQ = @SEQ");
 
-	        if(price_query.recordset.length > 0) {
-	        	// Price = MemberFlg == Var.CNST_MEMBER_FLG_YES ? Convert.ToInt32(reader["MEMBER_PRICE"].ToString()) : Convert.ToInt32(reader["VISITOR_PRICE"].ToString());
-	        	price = (uriageMemberFlg == 1) ? price_query.recordset[0].MEMBER_PRICE : price_query.recordset[0].VISITOR_PRICE ;
-	        }
+			if(price_query.recordset.length > 0) {
+				price = (uriageMemberFlg == 1) ? price_query.recordset[0].MEMBER_PRICE : price_query.recordset[0].VISITOR_PRICE ;
+			}
 
 		} catch(err) {
 			sendError(0,'GET_EX_PRICE: '+err);
@@ -467,9 +372,8 @@ app.post('/api/sales', async (req, res) => {
 						startDate = getDateTimeToString(new Date(maxDate.setSeconds(maxDate.getSeconds())));
 					}
 				} else {
-					// MaxDate = EndDate;
 					maxDate = dateNow;
-                    break;
+					break;
 				}
 
 			} while(currSeq == await GET_EX_SEQ(exItemId,await GET_WEEK_FLG(startDate),new Date(startDate).getHours()));
@@ -484,29 +388,29 @@ app.post('/api/sales', async (req, res) => {
 		hour = (hour < 10)?'0'+hour:hour;
 		try {
 			let query = await pool.request()
-	        .input('ITEM_ID', sql.VarChar, exItemId)
-	        .query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = 10");
-	        if(query.recordset.length > 0) {
-	        	for(let i in query.recordset) {
-	        		let obj = query.recordset[i];
-	        		SEQ = obj['WEEK_'+hour];
-	        		SEQ = (SEQ == 99)?0:SEQ;
-	        	}
-	        }
+			.input('ITEM_ID', sql.VarChar, exItemId)
+			.query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = 10");
+			if(query.recordset.length > 0) {
+				for(let i in query.recordset) {
+					let obj = query.recordset[i];
+					SEQ = obj['WEEK_'+hour];
+					SEQ = (SEQ == 99)?0:SEQ;
+				}
+			}
 
-	        if(SEQ == 0) {
-	        	let query2 = await pool.request()
-		        .input('ITEM_ID', sql.VarChar, exItemId)
-		        .input('WEEK_FLG', sql.VarChar, weekFlg)
-		        .query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = @WEEK_FLG");
-		        if(query2.recordset.length > 0) {
-		        	for(let i in query2.recordset) {
-		        		let obj = query2.recordset[i];
-		        		SEQ = obj['WEEK_'+hour];
-		        		SEQ = (SEQ == 99)?0:SEQ;
-		        	}
-		        }
-	        }
+			if(SEQ == 0) {
+				let query2 = await pool.request()
+				.input('ITEM_ID', sql.VarChar, exItemId)
+				.input('WEEK_FLG', sql.VarChar, weekFlg)
+				.query("SELECT * FROM MST_EX_PLAN P WHERE P.ITEM_ID = @ITEM_ID AND P.WEEK_FLG = @WEEK_FLG");
+				if(query2.recordset.length > 0) {
+					for(let i in query2.recordset) {
+						let obj = query2.recordset[i];
+						SEQ = obj['WEEK_'+hour];
+						SEQ = (SEQ == 99)?0:SEQ;
+					}
+				}
+			}
 
 		} catch(err) {
 			sendError(0,'GET_EX_SEQ: '+err);
@@ -520,11 +424,11 @@ app.post('/api/sales', async (req, res) => {
 			let weekflag = 0;
 
 			let query = await pool.request()
-	        .input('holiday_date', sql.VarChar, split_datetime[0])
-	        .query("SELECT * FROM MST_HOLIDAY WHERE HOLIDAY_DATE = @holiday_date");
+			.input('holiday_date', sql.VarChar, split_datetime[0])
+			.query("SELECT * FROM MST_HOLIDAY WHERE HOLIDAY_DATE = @holiday_date");
 
-	        if(query.recordset.length > 0) {
-	        	for(let i in query.recordset) {
+			if(query.recordset.length > 0) {
+				for(let i in query.recordset) {
 					let obj = query.recordset[i];
 					switch(obj.HOLIDAY_KBN) {
 						case 0:
@@ -541,64 +445,57 @@ app.post('/api/sales', async (req, res) => {
 							break;
 					}
 				}
-	        } else {
-	        	switch(new Date(data).getDay()) {
+			} else {
+				switch(new Date(data).getDay()) {
 					case 0:
 						weekflag = 1;
 						break;
-	        		case 1:
-	        			weekflag = 2;
-	        			break;
-	        		case 2:
-	        			weekflag = 3;
-	        			break;
-	    			case 3:
-	        			weekflag = 4;
-	        			break;
-	    			case 4:
-	        			weekflag = 5;
-	        			break;
-	    			case 5:
-	        			weekflag = 6;
-	        			break;
-	    			case 6:
-	        			weekflag = 7;
-	        			break;
-	    			// case 7:
-	        		// 	weekflag = 8;
-	        		// 	break;
-	    			case 8: //Before Holiday
-	        			weekflag = 8;
-	        			break;
-	    			case 9: //Consecutive Holiday
-	        			weekflag = 9;
-	        			break; 
-	    			case 10: //Not Fix
-	        			weekflag = 10;
-	        			break;
-	        	}
+					case 1:
+						weekflag = 2;
+						break;
+					case 2:
+						weekflag = 3;
+						break;
+					case 3:
+						weekflag = 4;
+						break;
+					case 4:
+						weekflag = 5;
+						break;
+					case 5:
+						weekflag = 6;
+						break;
+					case 6:
+						weekflag = 7;
+						break;
+					case 8: //Before Holiday
+						weekflag = 8;
+						break;
+					case 9: //Consecutive Holiday
+						weekflag = 9;
+						break; 
+					case 10: //Not Fix
+						weekflag = 10;
+						break;
+				}
 			}
-			
-        	return weekflag;
-        } catch(err) {
+			return weekflag;
+		} catch(err) {
 			sendError(0,'GET_WEEK_FLG: '+err);
 		}
 	}
 
-	// check for EXT, AUTOPACK=
+	// check for EXT, AUTOPACK
 	async function GET_EXT_AUTOPACK_HT(data,uriage) {
 		let _data = data;
 		let _ExCurrentDate;
-		// let TBL_URIAGE_DTL_CLASS = [];
 		let _tbl_uriage_class = {};
 		let SEQ = 0;
 		try	{
-
 			let item = [];
 			for(let i in _data) {
 				let obj = _data[i];
 
-				// ITEM_KBN > 1 (display but not compute)
 				if(obj.ITEM_KBN > 1) {
 
 					TBL_URIAGE_DTL_CLASS.push({
@@ -626,18 +523,7 @@ app.post('/api/sales', async (req, res) => {
 						UPDATE_DATE:obj.UPDATE_DATE,
 						UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 					});
-					// TBL_URIAGE_DTL_CLASS.push({
-			        // 	SALES_NO:obj.SALES_NO,
-			        // 	ITEM_ID:obj.ITEM_ID,
-			        // 	ITEM_KBN:obj.ITEM_KBN,
-			        // 	ITEM_NM:obj.ITEM_NM,
-			        // 	PRICE:obj.ITEM_PRICE,
-			        // 	QU:obj.ITEM_QU,
-					// 	TOTAL:obj.TOTAL_YEN,
-					// 	BASE_MIN:obj.BASE_MIN,
-					// 	WHERE:'BEFORE EXT_AP'
-					// });
-			        total_price += parseInt(obj.TOTAL_YEN);
+					total_price += parseInt(obj.TOTAL_YEN);
 				} else {
 
 					let query = await pool.request()
@@ -674,17 +560,6 @@ app.post('/api/sales', async (req, res) => {
 									UPDATE_DATE:obj.UPDATE_DATE,
 									UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 								});
-								// TBL_URIAGE_DTL_CLASS.push({
-								// 	SALES_NO:obj.SALES_NO,
-								// 	ITEM_ID:autoPack.ITEM_ID,
-								// 	ITEM_KBN:obj.ITEM_KBN,
-								// 	ITEM_NM:autoPack.ITEM_NM,
-								// 	PRICE:autoPack.ITEM_PRICE,
-								// 	QU:1,
-								// 	TOTAL:autoPack.TOTAL_YEN,
-								// 	BASE_MIN:autoPack.EX_BASE_MIN,
-								// 	WHERE:'AFTER AP'
-								// });
 								total_price += parseInt(obj.TOTAL_YEN);
 
 								obj2.ITEM_ID = autoPack.ITEM_ID;
@@ -721,23 +596,10 @@ app.post('/api/sales', async (req, res) => {
 								UPDATE_DATE:obj.UPDATE_DATE,
 								UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 							});
-							// TBL_URIAGE_DTL_CLASS.push({
-							// 	SALES_NO:obj.SALES_NO,
-							// 	ITEM_ID:obj2.ITEM_ID,
-							// 	ITEM_KBN:obj.ITEM_KBN,
-							// 	ITEM_NM:obj2.ITEM_NM,
-							// 	PRICE:obj.ITEM_PRICE,
-							// 	QU:1,
-							// 	TOTAL:obj.ITEM_PRICE,
-							// 	BASE_MIN:obj2.EX_BASE_MIN,
-							// 	WHERE:'AP NULL'
-							// });
 							total_price += parseInt(obj.TOTAL_YEN);
 						}
 
 						let _GET_SEAT_ITEM_END_DATE = await GET_SEAT_ITEM_END_DATE([obj2]);
-						// make token
-						// console.log([obj2],_GET_SEAT_ITEM_END_DATE,obj,uriage);
 						_ExCurrentDate = await ExCurrentDate([obj2],_GET_SEAT_ITEM_END_DATE,obj,uriage);
 						for(let ex in _ExCurrentDate) {
 							let exobj = _ExCurrentDate[ex];
@@ -767,20 +629,7 @@ app.post('/api/sales', async (req, res) => {
 								UPDATE_DATE:obj.UPDATE_DATE,
 								UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 							});
-							
-							// TBL_URIAGE_DTL_CLASS.push({
-							// 	SALES_NO:exobj.SALES_NO,
-							// 	ITEM_ID:exobj.ITEM_ID,
-							// 	ITEM_KBN:exobj.ITEM_KBN,
-							// 	ITEM_NM:exobj.ITEM_NM,
-							// 	PRICE:exobj.ITEM_PRICE,
-							// 	QU:exobj.ITEM_QU,
-							// 	TOTAL:exobj.TOTAL_YEN,
-							// 	BASE_MIN:exobj.BASE_MIN,
-							// 	WHERE:'AFTER EXT'
-							// });
 							total_price += parseInt(exobj.TOTAL_YEN);
-							// total_price += exobj.TOTAL_YEN;
 						}
 					}
 				
@@ -791,7 +640,6 @@ app.post('/api/sales', async (req, res) => {
 		} catch(err) {
 			sendError(CNST_ERROR_CODE.error_11,'GET_EXT_AUTOPACK_HT\n'+err);
 		}
-		// CHECK SEAT BASE MIN, EX_BASE_MIN, PACK_END_TIME, AUTO_PACK_ID
 		return TBL_URIAGE_DTL_CLASS;
 	}
 
@@ -823,7 +671,6 @@ app.post('/api/sales', async (req, res) => {
 		table.columns.add('INPUT_DATE', sql.VarChar, {nullable:true});
 		table.columns.add('UPDATE_STAFF_ID', sql.VarChar, {nullable:true});
 		table.columns.add('UPDATE_DATE', sql.VarChar, {nullable:true});
-		// table.columns.add('R_TAX_FLG', sql.VarChar, {nullable:true});
 		
 		for(let i in obj) {
 			let _obj = obj[i];
@@ -851,8 +698,7 @@ app.post('/api/sales', async (req, res) => {
 				_obj.INPUT_STAFF_ID,
 				_obj.INPUT_DATE,
 				_obj.UPDATE_STAFF_ID,
-				(_obj.UPDATE_DATE == null)?null:convert_datetime(_obj.UPDATE_DATE),
-				// _obj.R_TAX_FLG
+				(_obj.UPDATE_DATE == null)?null:convert_datetime(_obj.UPDATE_DATE)
 			);
 			SEQ++;
 		}
@@ -904,7 +750,6 @@ app.post('/api/sales', async (req, res) => {
 			table.columns.add('INPUT_DATE', sql.VarChar, {nullable:true});
 			table.columns.add('UPDATE_STAFF_ID', sql.VarChar, {nullable:true});
 			table.columns.add('UPDATE_DATE', sql.VarChar, {nullable:true});
-			// table.columns.add('R_TAX_FLG', sql.VarChar, {nullable:true});
 			for(let i in obj.recordset) {
 				let _obj = obj.recordset[i];
 				console.log(_obj);
@@ -932,14 +777,9 @@ app.post('/api/sales', async (req, res) => {
 					_obj.INPUT_STAFF_ID,
 					convert_datetime(_obj.INPUT_DATE),
 					_obj.UPDATE_STAFF_ID,
-					(_obj.UPDATE_DATE == null)?null:convert_datetime(_obj.UPDATE_DATE),
-					// _obj.R_TAX_FLG
+					(_obj.UPDATE_DATE == null)?null:convert_datetime(_obj.UPDATE_DATE)
 				);
 			}
-			// for(let i in obj) {
-			// 	let _obj = obj[i];
-			// 	table.rows.add(_hash,_obj.SALES_NO,_obj.ITEM_ID,_obj.ITEM_KBN,_obj.ITEM_NM,_obj.PRICE,_obj.QU,_obj.TOTAL);
-			// }
 			let request = new sql.Request()
 			request.bulk(table, async (err, result) => {
 				if(err) res.json(0);
@@ -960,16 +800,13 @@ app.post('/api/sales', async (req, res) => {
 			.input('TOKEN_ID', sql.NVarChar(50), _hash)
 			.input('SALES_NO', sql.NVarChar(50), SALES_NO)
 			.query("SELECT * FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID AND SALES_NO = @SALES_NO");
-			console.log(_GET_TMP_URIAGE_DTL);
 			if(_GET_TMP_URIAGE_DTL.recordset.length > 0) {
-				console.log(_GET_TMP_URIAGE_DTL.recordset);
 				return _GET_TMP_URIAGE_DTL.recordset;
 			} else {
 				let _GET_TMP_URIAGE_DTL2 = await pool.request()
 				.input('TOKEN_ID', sql.NVarChar(50), _hash)
 				.input('SALES_NO', sql.NVarChar(50), SALES_NO)
 				.query("SELECT * FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID AND SALES_NO = @SALES_NO");
-				console.log(_GET_TMP_URIAGE_DTL2.recordset);
 				return _GET_TMP_URIAGE_DTL2.recordset;
 			}
 		} catch (err) {
@@ -978,13 +815,11 @@ app.post('/api/sales', async (req, res) => {
 	}
 
 	async function INSERT_TOKENIZED_URIAGE_DTL(obj) {
-		// let return_data;
 		try{
 
 			let _hash = await hashCode(dateTimeNow());
 
 			let table = new sql.Table('TBL_URIAGE_DTL_TEMP');
-			// table.create = true;
 			table.columns.add('TOKEN_ID', sql.NVarChar(50), {nullable: true});
 			table.columns.add('SALES_NO', sql.NVarChar(50), {nullable: true});
 			table.columns.add('ITEM_ID', sql.NVarChar(50), {nullable: true});
@@ -1005,7 +840,6 @@ app.post('/api/sales', async (req, res) => {
 			let TEMP_URIAGE_DTL = await pool.request()
 			.input('TOKEN_ID', sql.NVarChar(50), _hash)
 			.query("SELECT DISTINCT ITEM_ID, ITEM_KBN, ITEM_NM, PRICE, SUM(QU) AS QU, SUM(TOTAL) AS TOTAL, TOKEN_ID, SALES_NO FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID GROUP BY ITEM_ID, ITEM_KBN, ITEM_NM, PRICE, TOKEN_ID, SALES_NO;");
-			// if(TEMP_URIAGE_DTL.recordset.length > 0) {
 			let DELETE_TMP_URIAGE_DTL = await pool.request()
 			.input('TOKEN_ID', sql.NVarChar(50), _hash)
 			.query("DELETE FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID");
@@ -1031,7 +865,6 @@ app.post('/api/sales', async (req, res) => {
 			.input('TOKEN_ID', sql.NVarChar(50), _hash)
 			.query("SELECT * FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID;");
 			return _GET_TMP_URIAGE_DTL.recordset;
-			// }	
 		} catch(err) {
 			sendError(0,'INSERT_TOKENIZED_URIAGE_DTL: '+err);
 		}
@@ -1049,7 +882,6 @@ app.post('/api/sales', async (req, res) => {
 		var a = 1, c = 0, h, o;
 		if (s) {
 			a = 0;
-			/*jshint plusplus:false bitwise:false*/
 			for (h = s.length - 1; h >= 0; h--) {
 				o = s.charCodeAt(h);
 				a = (a<<6&268435455) + o + (o<<14);
@@ -1061,10 +893,7 @@ app.post('/api/sales', async (req, res) => {
 	}
 
 	async function AUTO_PACK(itemId,seatUseStartDate,seatUseEndDate,uriageMemberFlg,itemSeq,useCount = 1) {
-		// console.log(itemId,seatUseStartDate,seatUseEndDate,uriageMemberFlg,itemSeq,useCount);
-		// console.log('itemId: '+itemId,'seatUseStartDate: '+seatUseStartDate,'seatUseEndDate: '+seatUseEndDate,'uriageMemberFlg: '+uriageMemberFlg,'itemSeq: '+itemSeq,'useCount: '+useCount);
 
-		// let _seatUseStartDate = new Date(seatUseStartDate);
 		let SQL = '';
 		let itemName = '';
 		let itemBaseMin = '';
@@ -1092,7 +921,7 @@ app.post('/api/sales', async (req, res) => {
 			let getHmm = getEndDate.split(':');
 
 			let query = await pool.request()
-			.input('SEQ', sql.VarChar, itemSeq)//itemSeq
+			.input('SEQ', sql.VarChar, itemSeq)
 			.input('ITEM_ID', sql.VarChar, itemId)
 			.input('WEEK_FLG', sql.VarChar, weekFlg)
 			.input('ENDDATE', sql.VarChar, getHmm[0]+':'+getHmm[1])
@@ -1121,7 +950,7 @@ app.post('/api/sales', async (req, res) => {
 
 			}
 
-			let data = [];//SEAT_USE_START_DATE,PACK_END_TIME,AUTO_PACK_ID,ITEM_SEQ,SEAT_BASE_MIN
+			let data = [];
 			data.push({
 				SEAT_USE_START_DATE:seatUseStartDate,
 				PACK_END_TIME:PackEndTime,
@@ -1240,12 +1069,10 @@ app.post('/api/sales', async (req, res) => {
 
 		try {
 
-			let data = [];//SEAT_USE_START_DATE,PACK_END_TIME,AUTO_PACK_ID,ITEM_SEQ,SEAT_BASE_MIN
+			let data = [];
 	        data.push({
 	        	SEAT_USE_START_DATE:seatUseStartDate,
 	        	PACK_END_TIME:packEndTime,
-	        	// AUTO_PACK_ID:null,
-	        	// ITEM_SEQ:itemSeq,
 	        	SEAT_BASE_MIN:itemBaseMin
 	        });
 
@@ -1261,41 +1088,40 @@ app.post('/api/sales', async (req, res) => {
 				}
 
 				//Get Week Flg
-	            let weekExCurrentDate = new Date(exCurrentDate);
-	            weekExCurrentDate.setSeconds(weekExCurrentDate.getSeconds()+60);
-	            weekFlg = await GET_WEEK_FLG(getDateTimeToString(weekExCurrentDate));
+				let weekExCurrentDate = new Date(exCurrentDate);
+				weekExCurrentDate.setSeconds(weekExCurrentDate.getSeconds()+60);
+				weekFlg = await GET_WEEK_FLG(getDateTimeToString(weekExCurrentDate));
 
-	            //Get Hr Value
-	            let getHrExCurrentDate = new Date(exCurrentDate);
-	            	getHrExCurrentDate = new Date(getHrExCurrentDate.setSeconds(getHrExCurrentDate.getSeconds()+60));
-            	HR = getHrExCurrentDate.getHours();
+				//Get Hr Value
+				let getHrExCurrentDate = new Date(exCurrentDate);
+					getHrExCurrentDate = new Date(getHrExCurrentDate.setSeconds(getHrExCurrentDate.getSeconds()+60));
+				HR = getHrExCurrentDate.getHours();
 
-	            //Get Max SEQ base
-	            exItemMin = await GET_MAX_SEQ_MINS(exItemId,exBaseMin,exCurrentDate,seatUseEndDate);
-	            exItemMin = (exItemMin < 0)?0:exItemMin;
+				//Get Max SEQ base
+				exItemMin = await GET_MAX_SEQ_MINS(exItemId,exBaseMin,exCurrentDate,seatUseEndDate);
+				exItemMin = (exItemMin < 0)?0:exItemMin;
 
-	            if(exItemMin > 0) {
-	            	exItemQu = 0;
-	            	exItemPrice = 0;
+				if(exItemMin > 0) {
+					exItemQu = 0;
+					exItemPrice = 0;
 
-	            	//Compute Item Quantity
-	            	exItemQu = Math.floor(exItemMin / exBaseMin);
+					//Compute Item Quantity
+					exItemQu = Math.floor(exItemMin / exBaseMin);
 
-	            	//Round Off Quantity
-	            	exItemQu = (exItemMin % exBaseMin > 0)?exItemQu + 1:exItemQu;
+					//Round Off Quantity
+					exItemQu = (exItemMin % exBaseMin > 0)?exItemQu + 1:exItemQu;
 
-	            	exItemQu = (exItemQu * useCount);
+					exItemQu = (exItemQu * useCount);
 
-	            	//Get Price Pack
-	            	// let currSeq = await GET_EX_SEQ(exItemId,weekFlg,HR);
+					//Get Price Pack
+					// let currSeq = await GET_EX_SEQ(exItemId,weekFlg,HR);
 
-	            	exItemPrice = await GET_EX_PRICE(exItemId,weekFlg,HR,memberFlg);
+					exItemPrice = await GET_EX_PRICE(exItemId,weekFlg,HR,memberFlg);
 
-	            	exTotalYen += (exItemPrice * exItemQu);
-	            }
-	            index += 1;
+					exTotalYen += (exItemPrice * exItemQu);
+				}
+				index += 1;
 			} while (exCurrentDate < seatUseEndDate)
-
 
 		} catch(err) {
 			sendError(0,'CALC_EXPRICE_VIRTUAL: '+err);
@@ -1372,19 +1198,15 @@ app.post('/api/sales', async (req, res) => {
 			for(let i in data) {
 				let obj = data[i];
 				let query = await pool.request()
-		        .input('salesno', sql.Int, obj.SALES_NO)
-		        .input('itemid', sql.VarChar, obj.ITEM_ID)
-		        .query("SELECT D.SEAT_USE_START_DATE, D.ITEM_ID, D.ITEM_NM, S.CHANGE_PRICE_FLG, S.BASE_MIN AS SEAT_BASE_MIN, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN, S.PACK_END_TIME, AUTO_PACK_ID FROM TBL_URIAGE_DTL D INNER JOIN MST_SEAT_ITEM S ON D.ITEM_ID = S.ITEM_ID INNER JOIN MST_EX_SEAT_ITEM E ON S.EX_ITEM_ID = E.ITEM_ID WHERE S.SEQ = 0 AND E.SEQ = 0 AND D.SALES_NO = @salesno AND D.ITEM_ID = @itemid AND D.DELETE_FLG = '0';");
-		        item.push(query.recordset);
+				.input('salesno', sql.Int, obj.SALES_NO)
+				.input('itemid', sql.VarChar, obj.ITEM_ID)
+				.query("SELECT D.SEAT_USE_START_DATE, D.ITEM_ID, D.ITEM_NM, S.CHANGE_PRICE_FLG, S.BASE_MIN AS SEAT_BASE_MIN, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN, S.PACK_END_TIME, AUTO_PACK_ID FROM TBL_URIAGE_DTL D INNER JOIN MST_SEAT_ITEM S ON D.ITEM_ID = S.ITEM_ID INNER JOIN MST_EX_SEAT_ITEM E ON S.EX_ITEM_ID = E.ITEM_ID WHERE S.SEQ = 0 AND E.SEQ = 0 AND D.SALES_NO = @salesno AND D.ITEM_ID = @itemid AND D.DELETE_FLG = '0';");
+				item.push(query.recordset);
 			}
 			return item;
 		} catch(err) {
 			sendError(0,'get tbl uriage: '+err);
 		}
-	}
-
-	async function CHECK_AUTO_PACK() {
-
 	}
 
 	async function GET_ALL_TOTAL() {
@@ -1395,9 +1217,7 @@ app.post('/api/sales', async (req, res) => {
 	        return query.recordset[0].ALL_TOTAL;
 		} catch(err) {
 			sendError(0,'get all total');
-			// return err;
 		}
-	    // "ALL_TOTAL":SUM of ALL TBL_URIAGE.TOTAL in All Sales Data,
 
 	}
 
@@ -1406,11 +1226,9 @@ app.post('/api/sales', async (req, res) => {
 			let query = await pool.request()
 	        .input('seatno', sql.Int, seat_no)
 	        .query("SELECT SUM([TBL_URIAGE].[URIAGE_YEN]) AS [ALL_TOTAL] FROM [POS-_-00141-_-4_04].[dbo].[TBL_URIAGE] AS [TBL_URIAGE] WHERE [TBL_URIAGE].[SEAT_NO] = @seatno AND [TBL_URIAGE].[DELETE_FLG] = 0 AND [TBL_URIAGE].[SEISAN_FLG] = 0;");
-	        // return query.recordset[0].ALL_TOTAL;
 	        return return_json.ALL_TOTAL * (tax_rate / (100 + await TAX_RATE(_getDate)));
 		} catch(err) {
 			sendError(0,'get all tax');
-			// return err;
 		}
 	}
 
@@ -1427,13 +1245,10 @@ app.post('/api/sales', async (req, res) => {
 		    return result;
 		} catch(err) {
 			sendError(0,'tax rate');
-			// return err;
 		}
 	}
 
     async function compute_TAX_YEN(price) {
-    	// console.log(price);
-    	// total = price * qu
     	let result = 0;
     	try{
 			let query = await pool.request()
@@ -1447,7 +1262,6 @@ app.post('/api/sales', async (req, res) => {
 		    return Math.floor(result);
 	    } catch(err) {
 	    	sendError(CNST_ERROR_CODE.error_11,'compute tax yen\n'+err);
-			// return err;
 	    }
     }
 
