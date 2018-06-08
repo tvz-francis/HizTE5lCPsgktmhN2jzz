@@ -1,0 +1,25 @@
+{
+  "name": "across_api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "app1": "nodemon apps/app1.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "array": "^0.4.3",
+    "dateformat": "^3.0.3",
+    "express": "^4.16.3",
+    "foreach": "^2.0.5",
+    "mssql": "^4.1.0",
+    "mysql": "^2.15.0",
+    "pm2": "^2.10.2",
+    "request": "^2.86.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.17.5"
+  }
+}

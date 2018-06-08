@@ -1,0 +1,3 @@
+- install npm
+- install mssql
+- install pm2
