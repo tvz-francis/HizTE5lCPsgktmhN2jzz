@@ -95,7 +95,7 @@ app.post('/api/sales', async (req, res) => {
 
 	for(let i in rules) {
 		if(!req.body[i]) {
-			sendError(CNST_ERROR_CODE.error_3,'(API-SALES) POST VALIDATION ERROR\n');
+			sendError(CNST_ERROR_CODE.error_5,'(API-SALES) POST VALIDATION ERROR\n');
 		}
 	}
 
@@ -1404,6 +1404,17 @@ app.post('/api/init', async (req,res) => {
 			return;
 		}
 
+		let MST_STAFF = "SELECT * FROM MST_STAFF WHERE STAFF_ID = @STAFF_ID";
+		MST_STAFF = await pool.request()
+		.input('STAFF_ID', sql.NVarChar, CNST_STAFF_ID)
+		.query(MST_STAFF);
+
+		if(MST_STAFF.recordset.length == 0)  {
+			res.json(CNST_ERROR_CODE.error_11);
+			return;
+		}
+
+		MST_STAFF = MST_STAFF.recordset[0];
 		MST_SHOP = MST_SHOP.recordset[0];
 
 		let MST_TAX = "SELECT TOP 1 [START_DATE], [TAX_RATE] FROM  [MST_TAX]  ORDER BY [START_DATE] DESC;";
@@ -1437,16 +1448,17 @@ app.post('/api/init', async (req,res) => {
 			},
 			"MST_STAFF" : {
 				"STAFF_ID" : CNST_STAFF_ID,
-				"STAFF_NM" : "自動精算"
+				"STAFF_NM" : MST_STAFF
 			}
 		};
 
+		sql.close();
 		return_json = mstShopDetails;
-
 		res.json(return_json);
 		
 
 	} catch(err) {
+		sql.close();
 		sendError(0,'init: '+err,res);
 	}
 
@@ -3415,7 +3427,6 @@ function getDateTimeToString(string_datetime) {
 	let string_datetime_date = string_datetime.getFullYear()+'-'+((string_datetime.getMonth()+1) < 10 ? '0'+(string_datetime.getMonth()+1):(string_datetime.getMonth()+1))+'-'+(string_datetime.getDate() < 10 ?'0'+string_datetime.getDate():string_datetime.getDate());
 	let string_datetime_time = (string_datetime.getHours()<10?'0'+string_datetime.getHours():string_datetime.getHours())+':'+(string_datetime.getMinutes()<10?'0'+string_datetime.getMinutes():string_datetime.getMinutes())+':'+(string_datetime.getSeconds()<10?'0'+string_datetime.getSeconds():string_datetime.getSeconds());
 	return string_datetime_date+' '+string_datetime_time;
-
 }
 
 function _getDate() {
