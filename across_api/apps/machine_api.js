@@ -89,10 +89,11 @@ app.post('/api/sales2', async(req,res) => {
               let query = await pool.request()
               .input('salesno', sql.Int, _uriageDtl.SALES_NO)
               .input('itemid', sql.VarChar, _uriageDtl.ITEM_ID)
-              .query("SELECT D.SEAT_USE_START_DATE, D.ITEM_ID, D.ITEM_NM, S.CHANGE_PRICE_FLG, S.BASE_MIN AS SEAT_BASE_MIN, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN, CONVERT(varChar,S.PACK_END_TIME) AS PACK_END_TIME, AUTO_PACK_ID, D.ITEM_SEQ FROM TBL_URIAGE_DTL D INNER JOIN MST_SEAT_ITEM S ON D.ITEM_ID = S.ITEM_ID INNER JOIN MST_EX_SEAT_ITEM E ON S.EX_ITEM_ID = E.ITEM_ID WHERE S.SEQ = 0 AND E.SEQ = 0 AND D.SALES_NO = @salesno AND D.ITEM_ID = @itemid AND D.DELETE_FLG = '0';");
+							.query("SELECT D.SEAT_USE_START_DATE, D.ITEM_ID, D.ITEM_NM, S.CHANGE_PRICE_FLG, S.BASE_MIN AS SEAT_BASE_MIN, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN, CONVERT(varChar,S.PACK_END_TIME) AS PACK_END_TIME, AUTO_PACK_ID, D.ITEM_SEQ FROM TBL_URIAGE_DTL D INNER JOIN MST_SEAT_ITEM S ON D.ITEM_ID = S.ITEM_ID INNER JOIN MST_EX_SEAT_ITEM E ON S.EX_ITEM_ID = E.ITEM_ID WHERE S.SEQ = 0 AND E.SEQ = 0 AND D.SALES_NO = @salesno AND D.ITEM_ID = @itemid AND D.DELETE_FLG = '0';");
+							console.log(query.recordset);
               query.recordset.forEach(async element => {
                 if(element.AUTO_PACK_ID != null) {
-                  let autoPack = await AUTO_PACK(element.ITEM_ID,convert_datetime(element.SEAT_USE_START_DATE),SEISAN_DATE,_uriage.MEMBER_FLG,element.ITEM_SEQ);
+                  // let autoPack = await AUTO_PACK(element.ITEM_ID,convert_datetime(element.SEAT_USE_START_DATE),SEISAN_DATE,_uriage.MEMBER_FLG,element.ITEM_SEQ);
                 }
               });
 

@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon apps/machine_api.js"
+    "dev1": "nodemon apps/app1.js",
+    "dev2": "nodemon apps/machine_api.js"
   },
   "author": "",
   "license": "ISC",

@@ -3,7 +3,7 @@ const app = express();
 const bodyParser = require('body-parser');
 const sql = require('mssql');
 // const mysql = require('mysql');
-const dateFormat = require('dateformat');
+// const dateFormat = require('dateformat');
 // const querystring = require('querystring');
 // var each = require('foreach');
 const CNST_ERROR_CODE = {
@@ -18,7 +18,7 @@ const CNST_ERROR_CODE = {
 	'error_8':'0008',
 	'error_9':'0009',
 	'error_10':'0010',
-	'error_11':'0011'
+	'error_11':'9999'
 };
 const CNST_STAFF_ID = "00000629au05";
 const CNST_SEAT_ITEM_ID = "999920176262";
@@ -45,39 +45,11 @@ let userPassValidation = function(req,res,next) {
 app.use(userPassValidation);
 
 const config = {
-    user:'sa',
+	user:'sa',
 	password:'xyz0',
 	server:'192.168.128.121\\sqlexpress',
 	database:'APITestDB'
 };
-
-app.post('/api/sales2', (req,res) => {
-	let param = req.body;
-
-	let rules = {
-		'seat_no': 'Required Seat no.'
-	};
-
-	postValidation(rules,param)
-	.then(async () => {
-		const pool = await sql.connect(config);
-
-		let MST_SHOP = await pool.request()
-		.query("SELECT * FROM MST_SHOP;");
-		MST_SHOP = MST_SHOP.recordset[0];
-
-		console.log(MST_SHOP);
-
-		sql.close();
-		res.status(200).end();
-	})
-	.catch(err => {
-		console.log(err);
-		sql.close();
-		res.status(200).send(CNST_ERROR_CODE.error_11)
-	});
-
-});
 
 //#region API-SALES
 app.post('/api/sales', async (req, res) => {
@@ -95,7 +67,7 @@ app.post('/api/sales', async (req, res) => {
 
 	for(let i in rules) {
 		if(!req.body[i]) {
-			sendError(CNST_ERROR_CODE.error_5,'(API-SALES) POST VALIDATION ERROR\n');
+			sendError(CNST_ERROR_CODE.error_3,'(API-SALES) POST VALIDATION ERROR\n');
 		}
 	}
 
@@ -133,6 +105,21 @@ app.post('/api/sales', async (req, res) => {
 	let ungroupedTblUriageDtlTemp = [];
 
 	try {
+		// CHECK SEAT_NO DATA
+		let SEAT_NO = await pool.request()
+		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
+		.query("SELECT * FROM TBL_URIAGE WHERE SEAT_NO = @SEAT_NO AND DELETE_FLG = 0 AND SEISAN_FLG = 0");
+		if(SEAT_NO.recordset.length === 0) {
+			return res.status(404).send(CNST_ERROR_CODE.error_2);
+		}
+
+		// CHECK SEAT STATUS return IF 2.
+		let SEAT_STATUS = await pool.request()
+		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
+		.query("SELECT SEAT_STATUS FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO");
+		if(SEAT_STATUS.recordset[0].SEAT_STATUS == 2) {
+			return res.status(404).send(CNST_ERROR_CODE.error_5);
+		}
 
 		// UPDATE SEAT_STATUS
 		let SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
@@ -151,7 +138,6 @@ app.post('/api/sales', async (req, res) => {
 		    	member_flg = obj.MEMBER_FLG;
 				_uriage = obj;
 				let GETEXT_AUTOPACK_HT = await GET_EXT_AUTOPACK_HT(await TBL_URIAGE_DTL(obj.SALES_NO),obj);
-
 				for(let x in GETEXT_AUTOPACK_HT) {
 					let xObj = GETEXT_AUTOPACK_HT[x];
 					ungroupedTblUriageDtlTemp.push(xObj);
@@ -525,7 +511,7 @@ app.post('/api/sales', async (req, res) => {
 				let obj = _data[i];
 
 				if(obj.ITEM_KBN > 1) {
-
+					SEQ = (obj.SEQ == null)?SEQ:obj.SEQ;
 					TBL_URIAGE_DTL_CLASS.push({
 						BASE_MIN:obj.BASE_MIN,
 						DELETE_FLG:obj.DELETE_FLG,
@@ -545,13 +531,14 @@ app.post('/api/sales', async (req, res) => {
 						SEAT_USE_START_DATE:(obj.SEAT_USE_START_DATE == null)?null:convert_datetime(obj.SEAT_USE_START_DATE),
 						SEISAN_DATE:null,
 						SEISAN_FLG:obj.SEISAN_FLG,
-						SEQ:obj.SEQ,
+						SEQ:SEQ,
 						TAX_KBN:obj.TAX_KBN,
 						TOTAL_YEN:obj.TOTAL_YEN,
 						UPDATE_DATE:obj.UPDATE_DATE,
 						UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 					});
 					total_price += parseInt(obj.TOTAL_YEN);
+					SEQ++;
 				} else {
 
 					let query = await pool.request()
@@ -582,14 +569,15 @@ app.post('/api/sales', async (req, res) => {
 									SEAT_USE_START_DATE:(obj.SEAT_USE_START_DATE == null)?null:convert_datetime(obj.SEAT_USE_START_DATE),
 									SEISAN_DATE:null,
 									SEISAN_FLG:obj.SEISAN_FLG,
-									SEQ:0,
+									SEQ:SEQ,
 									TAX_KBN:obj.TAX_KBN,
 									TOTAL_YEN:autoPack.TOTAL_YEN,
 									UPDATE_DATE:obj.UPDATE_DATE,
 									UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 								});
 								total_price += parseInt(obj.TOTAL_YEN);
-
+								SEQ++;
+								
 								obj2.ITEM_ID = autoPack.ITEM_ID;
 								obj2.ITEM_NM = autoPack.ITEM_NM;
 								obj2.SEAT_BASE_MIN = autoPack.BASE_MIN;
@@ -618,13 +606,14 @@ app.post('/api/sales', async (req, res) => {
 								SEAT_USE_START_DATE:(obj.SEAT_USE_START_DATE == null)?null:convert_datetime(obj.SEAT_USE_START_DATE),
 								SEISAN_DATE:null,
 								SEISAN_FLG:obj.SEISAN_FLG,
-								SEQ:0,
+								SEQ:SEQ,
 								TAX_KBN:obj.TAX_KBN,
 								TOTAL_YEN:obj.ITEM_PRICE,
 								UPDATE_DATE:obj.UPDATE_DATE,
 								UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 							});
 							total_price += parseInt(obj.TOTAL_YEN);
+							SEQ++;
 						}
 
 						let _GET_SEAT_ITEM_END_DATE = await GET_SEAT_ITEM_END_DATE([obj2]);
@@ -651,13 +640,14 @@ app.post('/api/sales', async (req, res) => {
 								SEAT_USE_START_DATE:(obj.SEAT_USE_START_DATE == null)?null:convert_datetime(obj.SEAT_USE_START_DATE),
 								SEISAN_DATE:null,
 								SEISAN_FLG:obj.SEISAN_FLG,
-								SEQ:null,
+								SEQ:SEQ,
 								TAX_KBN:obj.TAX_KBN,
 								TOTAL_YEN:exobj.TOTAL_YEN,
 								UPDATE_DATE:obj.UPDATE_DATE,
 								UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
 							});
 							total_price += parseInt(exobj.TOTAL_YEN);
+							SEQ++;
 						}
 					}
 				
@@ -991,7 +981,7 @@ app.post('/api/sales', async (req, res) => {
 
 			totalYen = itemPrice + (await CALC_EXPRICE_VIRTUAL(seatUseStartDate,seatUseEndDate,uriageMemberFlg,itemBaseMin,exItemId,ExBaseMin,PackEndTime,useCount));
 
-			let SQL_PACK_A = "IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN ) BEGIN CREATE TABLE #TMP_SEAT_ITEM_10 ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_10 SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN CREATE TABLE #TMP_SEAT_ITEM_WEEK ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_WEEK SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN SELECT * FROM #TMP_SEAT_ITEM_WEEK A UNION SELECT * FROM #TMP_SEAT_ITEM_10 B WHERE B.ITEM_ID NOT IN (SELECT A.ITEM_ID FROM #TMP_SEAT_ITEM_WEEK A) ORDER BY ITEM_PRICE DROP TABLE #TMP_SEAT_ITEM_10 DROP TABLE #TMP_SEAT_ITEM_WEEK DROP TABLE #TMP_SEAT_ITEM_10 DROP TABLE #TMP_SEAT_ITEM_WEEK END ELSE IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN ) SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) OR ( ISNULL(S.START_CHANGE_TIME, '') = '' AND ISNULL(s.END_CHANGE_TIME, '') = '' ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN ELSE SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN";
+			let SQL_PACK_A = "IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN ) BEGIN CREATE TABLE #TMP_SEAT_ITEM_10 ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_10 SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN CREATE TABLE #TMP_SEAT_ITEM_WEEK ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_WEEK SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN SELECT * FROM #TMP_SEAT_ITEM_WEEK A UNION SELECT * FROM #TMP_SEAT_ITEM_10 B WHERE B.ITEM_ID NOT IN (SELECT A.ITEM_ID FROM #TMP_SEAT_ITEM_WEEK A) ORDER BY ITEM_PRICE DROP TABLE #TMP_SEAT_ITEM_10 DROP TABLE #TMP_SEAT_ITEM_WEEK END ELSE IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN ) SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) OR ( ISNULL(S.START_CHANGE_TIME, '') = '' AND ISNULL(s.END_CHANGE_TIME, '') = '' ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN ELSE SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN";
 
 			let SQL_PACK_B = "IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN <= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN DESC ) BEGIN CREATE TABLE #TMP_SEAT_ITEM_10 ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_10 SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN <= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN DESC CREATE TABLE #TMP_SEAT_ITEM_WEEK ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_WEEK SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN <= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN DESC SELECT * FROM #TMP_SEAT_ITEM_WEEK A UNION SELECT * FROM #TMP_SEAT_ITEM_10 B WHERE B.ITEM_ID NOT IN (SELECT A.ITEM_ID FROM #TMP_SEAT_ITEM_WEEK A) ORDER BY ITEM_PRICE DROP TABLE #TMP_SEAT_ITEM_10 DROP TABLE #TMP_SEAT_ITEM_WEEK END ELSE IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN <= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN DESC ) SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN <= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) OR ( ISNULL(S.START_CHANGE_TIME, '') = '' AND ISNULL(s.END_CHANGE_TIME, '') = '' ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN DESC ELSE SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN <= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN DESC";
 
@@ -1007,23 +997,18 @@ app.post('/api/sales', async (req, res) => {
 
 				for(let i in query_SQL_PACK_A.recordset) {
 					let obj = query_SQL_PACK_A.recordset[i];
-
-					if(uriageMemberFlg == 1) {
-						totalYen = obj.MEMBER_PRICE;
-					} else {
-						totalYen = obj.VISITOR_PRICE;
-					}
+					totalYen = obj.ITEM_PRICE;
 					autoPackClass.push({
-				ITEM_ID: obj.ITEM_ID,
-				ITEM_NM: obj.ITEM_NM,
-				ITEM_SEQ: obj.SEQ,
-				ITEM_PRICE: totalYen,
-				BASE_MIN: obj.BASE_MIN,
-				EX_ITEM_ID: obj.EX_ITEM_ID,
-				EX_ITEM_NM: obj.EX_ITEM_NM,
-				EX_BASE_MIN: obj.EX_BASE_MIN,
-				PACK_END_TIME: obj.PACK_END_TIME,
-				TOTAL_YEN: totalYen
+						ITEM_ID: obj.ITEM_ID,
+						ITEM_NM: obj.ITEM_NM,
+						ITEM_SEQ: obj.SEQ,
+						ITEM_PRICE: totalYen,
+						BASE_MIN: obj.BASE_MIN,
+						EX_ITEM_ID: obj.EX_ITEM_ID,
+						EX_ITEM_NM: obj.EX_ITEM_NM,
+						EX_BASE_MIN: obj.EX_BASE_MIN,
+						PACK_END_TIME: obj.PACK_END_TIME,
+						TOTAL_YEN: totalYen
 					});
 
 				}
@@ -1042,23 +1027,18 @@ app.post('/api/sales', async (req, res) => {
 
 				for(let i in query_SQL_PACK_B.recordset) {
 					let obj = query_SQL_PACK_B.recordset[i];
-
-					if(uriageMemberFlg == 1) {
-						totalYen = obj.MEMBER_PRICE;
-					} else {
-						totalYen = obj.VISITOR_PRICE;
-					}
+					totalYen = obj.ITEM_PRICE;
 					autoPackClass.push({
-				ITEM_ID: obj.ITEM_ID,
-				ITEM_NM: obj.ITEM_NM,
-				ITEM_SEQ: obj.SEQ,
-				ITEM_PRICE: totalYen,
-				BASE_MIN: obj.BASE_MIN,
-				EX_ITEM_ID: obj.EX_ITEM_ID,
-				EX_ITEM_NM: obj.EX_ITEM_NM,
-				EX_BASE_MIN: obj.EX_BASE_MIN,
-				PACK_END_TIME: obj.PACK_END_TIME,
-				TOTAL_YEN: totalYen
+						ITEM_ID: obj.ITEM_ID,
+						ITEM_NM: obj.ITEM_NM,
+						ITEM_SEQ: obj.SEQ,
+						ITEM_PRICE: totalYen,
+						BASE_MIN: obj.BASE_MIN,
+						EX_ITEM_ID: obj.EX_ITEM_ID,
+						EX_ITEM_NM: obj.EX_ITEM_NM,
+						EX_BASE_MIN: obj.EX_BASE_MIN,
+						PACK_END_TIME: obj.PACK_END_TIME,
+						TOTAL_YEN: totalYen
 					});
 
 				}
@@ -1078,7 +1058,7 @@ app.post('/api/sales', async (req, res) => {
 			}
 
 		} catch(err) {
-			sendError(0,'AUTO_PACK: '+err);
+			sendError(0,'AUTO_PACK:\n'+err);
 		}
 		return autoPackClass[autoPackIndex];
 
@@ -1489,6 +1469,17 @@ app.post('/api/deposit', async (req,res) => {
 			let DEPOSIT_AMOUNT = req.body.DEPOSIT_AMOUNT;
 			let AWAY_TIME = req.body.AWAY_TIME;
 
+			// let GET_TBL_URIAGE = await pool.request()
+			// .input('SALES_NO', sql.VarChar, SALES_NO)
+			// .query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
+
+			// let TBL_GATE_SEQ = await pool.request()
+			// .input('SEAT_NO', sql.VarChar, SALES_NO)
+			// .query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
+
+			// console.log(TBL_GATE_SEQ);
+			// return res.end();
+
 			// VALIDATE SALES NO AND MEMBER ID
 			SQL = "SELECT * FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO AND MEMBER_ID = @MEMBER_ID";
 			let VALIDATE_SALES_NO = await pool.request()
@@ -1598,7 +1589,7 @@ app.post('/api/paid', async (req,res) => {
 	let pool = await sql.connect(config);
 	let reqParam = req.body;
 	let success = false;
-
+	const SEISAN_DATE = dateTimeNow();
 	let totalDiscountYen = 0;
 	let totalYen = 0;
 	let discountYen = 0;
@@ -1611,8 +1602,6 @@ app.post('/api/paid', async (req,res) => {
 	let salesCount = reqParam.SALES_DATA.length;
 
 	let _UPDATE_SEAT_STATUS;
-	
-	// GET TOKENIZED FROM TBL_URIAGE_DTL_TEMP
 
 	// _UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(reqParam.SEAT_NO,1,CNST_STAFF_ID);
 
@@ -1623,9 +1612,16 @@ app.post('/api/paid', async (req,res) => {
 	if(_VALIDATE_LOGOUT_PARAM) {
 
 		if(salesCount == 1) {
-			let DO_SINGLE_SALES_NO = await SINGLE_SALES_NO2(reqParam);
-			// let DO_SINGLE_SALES_NO = await SINGLE_SALES_NO(reqParam);
-			
+			// let DO_SINGLE_SALES_NO = await SINGLE_SALES_NO2(reqParam);
+			let DO_SINGLE_SALES_NO = await SINGLE_SALES_NO(reqParam);
+			SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
+			let UPDATE_MST_SEAT = await pool.request()
+			.input("SEAT_STATUS", sql.Int, 3)
+			.input("SEAT_NO", sql.NVarChar, reqParam.SALES_DATA[0].TBL_URIAGE.SEAT_NO) // 
+			.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
+			.query(SQL);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_0);
 		} else if(salesCount > 1) {
 
 			let { TBL_GASSAN } = reqParam;
@@ -1633,14 +1629,13 @@ app.post('/api/paid', async (req,res) => {
 			let newMemberCnt = 0;
 			let SQL = '';
 			let SEISAN_DATE = dateTimeNow();
+			// let VisitorCount = await MULTIPLE_SALES_NO();
+			return;
 
 			//#region TBL_GASSAN
 			try {
 
 				let uriage_yen = 0;
-
-				// uriage_yen = Shop.TAX_FLG == Var.TAX_FLG_INCLUDE ? Convert.ToInt32(lblZanSeisanYen.Value + lblMaebaraiYen.Value + lblCreditYen.Value) : Convert.ToInt32(lblZanSeisanYen.Value + lblMaebaraiYen.Value + lblCreditYen.Value);
-				// uriage_yen = uriage_yen < 0 ? 0 : uriage_yen;
 
 				SQL = "INSERT INTO TBL_GASSAN (GASSAN_NO, GASSAN_CNT, NEW_MEMBER_CNT, TOTAL_YEN, URIAGE_YEN, MAEBARAI_YEN, AZUKARI_YEN, CREDIT_YEN, CHANGE_YEN, DELETE_FLG, INPUT_STAFF_ID, INPUT_DATE, TAX_YEN, TAX_KBN)VALUES (@GASSAN_NO, @GASSAN_CNT, @NEW_MEMBER_CNT, @TOTAL_YEN, @URIAGE_YEN, @MAEBARAI_YEN, @AZUKARI_YEN, @CREDIT_YEN, @CHANGE_YEN, 0, @INPUT_STAFF_ID, @INPUT_DATE, @TAX_YEN, @TAX_KBN)";
 
@@ -1993,7 +1988,7 @@ app.post('/api/paid', async (req,res) => {
 				.input('SEAT_NO', sql.VarChar(4), GET_TBL_URIAGE.SEAT_NO)
 				.input('UPDATE_STAFF_ID', sql.VarChar(20), CNST_STAFF_ID) */
 				.input('SALES_NO', sql.VarChar(12), JSON_TBL_URIAGE.SALES_NO)
-				.input('SEISAN_DATE', sql.DateTime2(0), JSON_TBL_URIAGE.SEISAN_DATE)
+				.input('SEISAN_DATE', sql.DateTime2(0), SEISAN_DATE)
 				.input('USE_MIN', sql.Int, GET_TBL_URIAGE.USE_MIN)
 				.input('SHOUKEI_YEN', sql.Int, JSON_TBL_URIAGE.SHOUKEI_YEN)
 				.input('GOUKEI_YEN', sql.Int, JSON_TBL_URIAGE.GOUKEI_YEN)
@@ -2033,8 +2028,8 @@ app.post('/api/paid', async (req,res) => {
 						.input('TOTAL_YEN', sql.VarChar, jsonUriageDtl.TOTAL_YEN)
 						.input('BASE_MIN', sql.VarChar, jsonUriageDtl.BASE_MIN)
 						.input('ITEM_KBN', sql.VarChar, jsonUriageDtl.ITEM_KBN)
-						.input('SEISAN_DATE', sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-						.input('SEISAN_FLG', sql.VarChar, jsonUriageDtl.SEISAN_FLG)
+						.input('SEISAN_DATE', sql.DateTime2(0), SEISAN_DATE)
+						.input('SEISAN_FLG', sql.VarChar, 1)
 						.input('DELETE_FLG', sql.VarChar, jsonUriageDtl.DELETE_FLG)
 						.input('UPDATE_STAFF_ID', sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
 						.query(SQL);
@@ -2043,11 +2038,11 @@ app.post('/api/paid', async (req,res) => {
 						UPDATE_TBL_URIAGE_DTL = await pool.request()
 						.input('SALES_NO', sql.VarChar, jsonUriageDtl.SALES_NO)
 						.input('ITEM_ID', sql.VarChar, jsonUriageDtl.ITEM_ID)
-						.input('SEQ', sql.VarChar, SEQ)
-						.input('SEISAN_DATE', sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-						.input('SEISAN_FLG', sql.VarChar, jsonUriageDtl.SEISAN_FLG)
+						.input('SEQ', sql.VarChar, jsonUriageDtl.SEQ)
+						.input('SEISAN_DATE', sql.DateTime2(0), SEISAN_DATE)
+						.input('SEISAN_FLG', sql.VarChar, 1)
 						.input('DELETE_FLG', sql.VarChar, jsonUriageDtl.DELETE_FLG)
-						.input('UPDATE_STAFF_ID', sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
+						.input('UPDATE_STAFF_ID', sql.VarChar, CNST_STAFF_ID)
 						.query(SQL);
 					}
 
@@ -2068,8 +2063,8 @@ app.post('/api/paid', async (req,res) => {
 						.input("ITEM_QU", sql.VarChar, jsonUriageDtl.ITEM_QU)
 						.input("ITEM_PRICE", sql.VarChar, jsonUriageDtl.ITEM_PRICE)
 						.input("TOTAL_YEN", sql.VarChar, jsonUriageDtl.TOTAL_YEN)
-						.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-						.input("SEISAN_FLG", sql.VarChar, jsonUriageDtl.SEISAN_FLG)
+						.input("SEISAN_DATE", sql.DateTime2(0), SEISAN_DATE)
+						.input("SEISAN_FLG", sql.VarChar, 1)
 						.input("MAEBARAI_FLG", sql.VarChar, jsonUriageDtl.MAEBARAI_FLG)
 						.input("DELETE_FLG", sql.VarChar, jsonUriageDtl.DELETE_FLG)
 						.input("RETURN_QU", sql.VarChar, jsonUriageDtl.RETURN_QU)
@@ -2124,22 +2119,21 @@ app.post('/api/paid', async (req,res) => {
 
 					let UPDATE_MST_SEAT_STATUS = await pool.request()
 					.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
-					.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-					.input("SEISAN_FLG", sql.Int, jsonUriageDtl.SEISAN_FLG)
+					.input("SEISAN_DATE", sql.DateTime2(0), SEISAN_DATE)
+					.input("SEISAN_FLG", sql.Int, 1) //jsonUriageDtl.SEISAN_FLG
 					.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
 					.query(SQL);
 
 					// TBL_CREDIT_RIREKI
 					SQL = "UPDATE TBL_CREDIT_RIREKI SET SEISAN_FLG = @SEISAN_FLG, SEISAN_DATE = @SEISAN_DATE , UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
 					let UPDATE_TBL_CREDIT_RIREKI = await pool.request()
-					.input("SEISAN_FLG", sql.Int, jsonUriageDtl.SEISAN_FLG)
-					.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
+					.input("SEISAN_FLG", sql.Int, 1)
+					.input("SEISAN_DATE", sql.DateTime2(0), SEISAN_DATE)
 					.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
 					.input("SALES_NO", sql.VarChar, jsonUriageDtl.SALES_NO)
 					.query(SQL);
 
 					// MST_MEMBER
-
 					SQL = "UPDATE MST_MEMBER SET LOGIN_CNT = LOGIN_CNT + 1, LAST_LOGIN_DATE = GETDATE(), APP_LOGIN_CNT = CASE WHEN @APP_LOGIN_FLG = 1 THEN APP_LOGIN_CNT + 1 ELSE APP_LOGIN_CNT END WHERE MEMBER_ID = @MEMBER_ID";
 					let UPDATE_MST_MEMBER = await pool.request()
 					.input("MEMBER_ID", sql.VarChar, JSON_TBL_URIAGE.MEMBER_ID)
@@ -2155,7 +2149,6 @@ app.post('/api/paid', async (req,res) => {
 					}
 
 					// DISCOUNT_YEN
-
 					SQL = "SELECT * FROM TBL_URIAGE_DTL WHERE SALES_NO = @SALES_NO AND ITEM_KBN=@ITEM_KBN AND DELETE_FLG=0 ORDER BY TOTAL_YEN";
 					let UPDATE_DISCOUNT_YEN = await pool.request()
 					.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
@@ -2197,7 +2190,7 @@ app.post('/api/paid', async (req,res) => {
 				// .input('SALES_NO', sql.VarChar, iSalesDataObj.SALES_NO)
 				// .query(SQL);
 
-				_UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(reqParam.SEAT_NO,3,CNST_STAFF_ID);
+				// _UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(reqParam.SEAT_NO,3,CNST_STAFF_ID);
 	
 				// if(GET_TOKEN_URIAGE_DTL_TEMP) {
 	
@@ -2207,12 +2200,15 @@ app.post('/api/paid', async (req,res) => {
 				// }
 	
 			}
-			let UDS = await UPLOAD_DATA_SALES(uriageDtlObj.SALES_DATA);
-			console.log(UDS);
+			// let UDS = await UPLOAD_DATA_SALES(uriageDtlObj.SALES_DATA);
+			// console.log(UDS);
+			// closeConnection();
 		} catch (err) {
-			ERROR_LOGGER(0,'SINGLE_SALES_NO: '+err);
+			console.log('SINGLE_SALES_NO\n'+err);
+			sql.close();
+			return res.status(404).send(CNST_ERROR_CODE.error_11);
 		}
-		closeConnection();
+		
 	}
 
 	async function SINGLE_SALES_NO2(uriageDtlObj) {
@@ -2234,18 +2230,18 @@ app.post('/api/paid', async (req,res) => {
 		var seisanDate = uriageDtlObj.LOGOUT_DATE;
 
 		try {
-
+			
 			const transaction = pool.transaction();
 
 			transaction.begin(async err => {
 
 				transaction.on('rollback', aborted => {
 					sql.close();
-					res.status(200).send(CNST_ERROR_CODE.error_11);
+					return res.status(200).send(CNST_ERROR_CODE.error_11);
 				});
 				transaction.on('commit', () => {
 					sql.close();
-					res.status(200).send(CNST_ERROR_CODE.error_0);
+					return res.status(200).send(CNST_ERROR_CODE.error_0);
 				});
 
 				for(let iSalesData in uriageDtlObj.SALES_DATA) {
@@ -2324,185 +2320,173 @@ app.post('/api/paid', async (req,res) => {
 								if(err) return transaction.rollback();
 
 								if(result.rowsAffected[0] == 0) {
-									//dito na ko api/paid
+									SEQ++;
+									SQL = "INSERT INTO TBL_URIAGE_DTL(SALES_NO, SEQ, ITEM_SEQ, ITEM_ID, ITEM_NM, ITEM_KBN, FOOD_KBN, TAX_KBN, ITEM_QU, ITEM_PRICE, BASE_MIN, TOTAL_YEN, SEISAN_DATE, SEISAN_FLG, MAEBARAI_FLG, DELETE_FLG, RETURN_QU, SEAT_USE_START_DATE, SEAT_NO, INPUT_STAFF_ID, INPUT_DATE, UPDATE_STAFF_ID, UPDATE_DATE) VALUES(@SALES_NO, @SEQ, @ITEM_SEQ, @ITEM_ID, @ITEM_NM, @ITEM_KBN, @FOOD_KBN, @TAX_KBN, @ITEM_QU, @ITEM_PRICE, @BASE_MIN, @TOTAL_YEN, @SEISAN_DATE, @SEISAN_FLG, @MAEBARAI_FLG, @DELETE_FLG, @RETURN_QU, @SEAT_USE_START_DATE, @SEAT_NO, @INPUT_STAFF_ID, GETDATE(), @UPDATE_STAFF_ID, GETDATE())";
+									let INSERT_TBL_URIAGE_DTL = transaction.request()
+									.input("SALES_NO", sql.VarChar, jsonUriageDtl.SALES_NO)
+									.input("SEQ", sql.VarChar, SEQ)
+									.input("ITEM_SEQ", sql.VarChar, jsonUriageDtl.ITEM_SEQ)
+									.input("ITEM_ID", sql.VarChar, jsonUriageDtl.ITEM_ID)
+									.input("ITEM_NM", sql.NVarChar(120), jsonUriageDtl.ITEM_NM)
+									.input("ITEM_KBN", sql.VarChar, jsonUriageDtl.ITEM_KBN)
+									.input("FOOD_KBN", sql.VarChar, jsonUriageDtl.FOOD_KBN)
+									.input("TAX_KBN", sql.VarChar, taxFlg)
+									.input("ITEM_QU", sql.VarChar, jsonUriageDtl.ITEM_QU)
+									.input("ITEM_PRICE", sql.VarChar, jsonUriageDtl.ITEM_PRICE)
+									.input("TOTAL_YEN", sql.VarChar, jsonUriageDtl.TOTAL_YEN)
+									.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
+									.input("SEISAN_FLG", sql.VarChar, jsonUriageDtl.SEISAN_FLG)
+									.input("MAEBARAI_FLG", sql.VarChar, jsonUriageDtl.MAEBARAI_FLG)
+									.input("DELETE_FLG", sql.VarChar, jsonUriageDtl.DELETE_FLG)
+									.input("RETURN_QU", sql.VarChar, jsonUriageDtl.RETURN_QU)
+									// .input("SEAT_USE_START_DATE", sql.VarChar, (jsonUriageDtl.LOGIN_DATE == null)?null:convert_datetime(jsonUriageDtl.LOGIN_DATE))
+									.input("SEAT_USE_START_DATE", sql.VarChar, null)
+									.input("BASE_MIN", sql.VarChar, jsonUriageDtl.BASE_MIN)
+									.input("SEAT_NO", sql.VarChar, jsonUriageDtl.SEAT_NO)
+									.input("INPUT_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
+									.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
+									.query(SQL,async(err,result) => {
+										if(err) return transaction.rollback();
+
+										if(jsonUriageDtl.ITEM_KBN == 5) {
+											totalDiscountYen += jsonUriageDtl.TOTAL_YEN;
+										} else {
+											totalYen += jsonUriageDtl.TOTAL_YEN;
+										}
+
+										/* TBL VISITOR NOT INCLUDED */
+
+										if(JSON_TBL_URIAGE.MEMBER_FLG == 1) {
+
+											SQL = "UPDATE MST_MEMBER_SHOP SET MEMBER_SHOP_LOGIN_CNT = MEMBER_SHOP_LOGIN_CNT+1, MEMBER_SHOP_POINT += @MEMBER_SHOP_POINT, LAST_NYUTEN_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE(), MEMBER_SHOP_APP_LOGIN_CNT = CASE WHEN @APP_LOGIN_FLG = 1 THEN MEMBER_SHOP_APP_LOGIN_CNT + 1 ELSE MEMBER_SHOP_APP_LOGIN_CNT END WHERE MEMBER_ID = @MEMBER_ID";
+											let UPDATE_MST_MEMBER_SHOP = transaction.request()
+											.input("MEMBER_ID", sql.VarChar, JSON_TBL_URIAGE.MEMBER_ID)
+											.input("MEMBER_SHOP_POINT", sql.VarChar, 0)
+											.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID) 
+											.input("APP_LOGIN_FLG", sql.VarChar, GET_TBL_URIAGE.APP_LOGIN_FLG)
+											.query(SQL,async(err,result) => {
+												if(err) return transaction.rollback();
+
+												// MST_SEAT
+												let UPDATE_MST_SEAT;
+												let multiLogin = await MULTIPLE_LOGIN(JSON_TBL_URIAGE.SEAT_NO);
+												if(multiLogin) {
+													SQL = "UPDATE MST_SEAT SET LOGIN_CNT -= @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
+													UPDATE_MST_SEAT = transaction.request()
+													.input('LOGIN_CNT', sql.Int, 1)
+													.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
+												} else {
+													SQL = "UPDATE MST_SEAT SET LOGIN_CNT = 0, SEAT_USE_SEQ = ARG_SEAT_USE_SEQ+1, ARG_SEAT_USE_SEQ += 1 WHERE SEAT_NO = @SEAT_NO";
+													UPDATE_MST_SEAT = transaction.request()
+													.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
+												}
+
+												UPDATE_MST_SEAT.query(SQL,async(err,result) => {
+													if(err) return transaction.rollback();
+
+													// MST_SEAT_STATUS
+													SQL = "UPDATE TBL_SEAT_STATUS SET SEISAN_DATE = @SEISAN_DATE, SEISAN_FLG =  @SEISAN_FLG, UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
+
+													let UPDATE_MST_SEAT_STATUS = transaction.request()
+													.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
+													.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
+													.input("SEISAN_FLG", sql.Int, 1) //jsonUriageDtl.SEISAN_FLG
+													.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
+													.query(SQL,async(err,result) => {
+														if(err) return transaction.rollback();
+														// TBL_CREDIT_RIREKI
+														SQL = "UPDATE TBL_CREDIT_RIREKI SET SEISAN_FLG = @SEISAN_FLG, SEISAN_DATE = @SEISAN_DATE , UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
+														let UPDATE_TBL_CREDIT_RIREKI = transaction.request()
+														.input("SEISAN_FLG", sql.Int, jsonUriageDtl.SEISAN_FLG)
+														.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
+														.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
+														.input("SALES_NO", sql.VarChar, jsonUriageDtl.SALES_NO)
+														.query(SQL,async(err,result) => {
+															if(err) return transaction.rollback();
+
+															// MST_MEMBER
+															SQL = "UPDATE MST_MEMBER SET LOGIN_CNT = LOGIN_CNT + 1, LAST_LOGIN_DATE = GETDATE(), APP_LOGIN_CNT = CASE WHEN @APP_LOGIN_FLG = 1 THEN APP_LOGIN_CNT + 1 ELSE APP_LOGIN_CNT END WHERE MEMBER_ID = @MEMBER_ID";
+															let UPDATE_MST_MEMBER = transaction.request()
+															.input("MEMBER_ID", sql.VarChar, JSON_TBL_URIAGE.MEMBER_ID)
+															.input("APP_LOGIN_FLG", sql.Int, GET_TBL_URIAGE.APP_LOGIN_FLG)
+															.query(SQL);
+															// appMemberId
+															if(GET_TBL_URIAGE.APP_LOGIN_FLG == 1) {
+																SQL = "SELECT APP_MEMBER_ID FROM MST_MEMBER WHERE MEMBER_ID = @MEMBER_ID;";
+																let GET_APP_MEMBER_ID = transaction.request()
+																.input('MEMBER_ID',sql.VarChar,JSON_TBL_URIAGE.MEMBER_ID)
+																.query(SQL);
+																appMemberId = GET_APP_MEMBER_ID.recordset[0].APP_MEMBER_ID;
+															}
+
+															// DISCOUNT_YEN
+															SQL = "SELECT * FROM TBL_URIAGE_DTL WHERE SALES_NO = @SALES_NO AND ITEM_KBN=@ITEM_KBN AND DELETE_FLG=0 ORDER BY TOTAL_YEN";
+															let UPDATE_DISCOUNT_YEN = transaction.request()
+															.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
+															.input("ITEM_KBN", sql.Int, 5)
+															.query(SQL);
+
+															if(UPDATE_DISCOUNT_YEN.recordset.length > 0) {
+
+																for(let i in UPDATE_DISCOUNT_YEN.recordset) {
+																	let iObj = UPDATE_DISCOUNT_YEN.recordset[i];
+
+																	if(totalDiscountYen < iObj.TOTAL_YEN) {
+																		discountYen = iObj.TOTAL_YEN;
+																		totalDiscountYen -= iObj.TOTAL_YEN;
+																	} else {
+																		discountYen = totalDiscountYen;
+																		totalDiscountYen = 0;
+																	}
+
+																	SQL = "UPDATE TBL_URIAGE_DTL SET TOTAL_YEN=TOTAL_YEN - @TOTAL_YEN, ITEM_PRICE = ITEM_PRICE - @TOTAL_YEN WHERE SALES_NO=@SALES_NO AND SEQ=@SEQ AND DELETE_FLG=0";
+																	let UPDATE_DISCOUNTED_YEN = transaction.request()
+																	.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
+																	.input("SEQ", sql.Int, iObj.SEQ)
+																	.input("TOTAL_YEN", sql.Int,discountYen)
+																	.query(SQL,async(err,result) => {
+																		if(err) return transaction.rollback();
+
+																		if(UPDATE_DISCOUNT_YEN.recordset.length == i) {
+																			// transaction.commit();
+																			console.log('COMMITTED');
+																		}
+
+																	});
+
+																}
+
+															}
+
+														});
+
+													});
+
+												});
+
+											});
+
+										}
+
+									});
 								}
 
-								transaction.rollback();
+								// transaction.rollback();
 							});
-	
-							if(UPDATE_TBL_URIAGE_DTL.rowsAffected[0] == 0) {
-	
-								SEQ++;
-	
-								SQL = "INSERT INTO TBL_URIAGE_DTL(SALES_NO, SEQ, ITEM_SEQ, ITEM_ID, ITEM_NM, ITEM_KBN, FOOD_KBN, TAX_KBN, ITEM_QU, ITEM_PRICE, BASE_MIN, TOTAL_YEN, SEISAN_DATE, SEISAN_FLG, MAEBARAI_FLG, DELETE_FLG, RETURN_QU, SEAT_USE_START_DATE, SEAT_NO, INPUT_STAFF_ID, INPUT_DATE, UPDATE_STAFF_ID, UPDATE_DATE) VALUES(@SALES_NO, @SEQ, @ITEM_SEQ, @ITEM_ID, @ITEM_NM, @ITEM_KBN, @FOOD_KBN, @TAX_KBN, @ITEM_QU, @ITEM_PRICE, @BASE_MIN, @TOTAL_YEN, @SEISAN_DATE, @SEISAN_FLG, @MAEBARAI_FLG, @DELETE_FLG, @RETURN_QU, @SEAT_USE_START_DATE, @SEAT_NO, @INPUT_STAFF_ID, GETDATE(), @UPDATE_STAFF_ID, GETDATE())";
-								let INSERT_TBL_URIAGE_DTL = await pool.request()
-								.input("SALES_NO", sql.VarChar, jsonUriageDtl.SALES_NO)
-								.input("SEQ", sql.VarChar, SEQ)
-								.input("ITEM_SEQ", sql.VarChar, jsonUriageDtl.ITEM_SEQ)
-								.input("ITEM_ID", sql.VarChar, jsonUriageDtl.ITEM_ID)
-								.input("ITEM_NM", sql.NVarChar(120), jsonUriageDtl.ITEM_NM)
-								.input("ITEM_KBN", sql.VarChar, jsonUriageDtl.ITEM_KBN)
-								.input("FOOD_KBN", sql.VarChar, jsonUriageDtl.FOOD_KBN)
-								.input("TAX_KBN", sql.VarChar, taxFlg)
-								.input("ITEM_QU", sql.VarChar, jsonUriageDtl.ITEM_QU)
-								.input("ITEM_PRICE", sql.VarChar, jsonUriageDtl.ITEM_PRICE)
-								.input("TOTAL_YEN", sql.VarChar, jsonUriageDtl.TOTAL_YEN)
-								.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-								.input("SEISAN_FLG", sql.VarChar, jsonUriageDtl.SEISAN_FLG)
-								.input("MAEBARAI_FLG", sql.VarChar, jsonUriageDtl.MAEBARAI_FLG)
-								.input("DELETE_FLG", sql.VarChar, jsonUriageDtl.DELETE_FLG)
-								.input("RETURN_QU", sql.VarChar, jsonUriageDtl.RETURN_QU)
-								// .input("SEAT_USE_START_DATE", sql.VarChar, (jsonUriageDtl.LOGIN_DATE == null)?null:convert_datetime(jsonUriageDtl.LOGIN_DATE))
-								.input("SEAT_USE_START_DATE", sql.VarChar, null)
-								.input("BASE_MIN", sql.VarChar, jsonUriageDtl.BASE_MIN)
-								.input("SEAT_NO", sql.VarChar, jsonUriageDtl.SEAT_NO)
-								.input("INPUT_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
-								.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
-								.query(SQL);
-							}
-	
-							if(jsonUriageDtl.ITEM_KBN == 5) {
-								totalDiscountYen += jsonUriageDtl.TOTAL_YEN;
-							} else {
-								totalYen += jsonUriageDtl.TOTAL_YEN;
-							}
-	
-							/* TBL VISITOR NOT INCLUDED */
-	
-							if(JSON_TBL_URIAGE.MEMBER_FLG == 1) {
-	
-								SQL = "UPDATE MST_MEMBER_SHOP SET MEMBER_SHOP_LOGIN_CNT = MEMBER_SHOP_LOGIN_CNT+1, MEMBER_SHOP_POINT += @MEMBER_SHOP_POINT, LAST_NYUTEN_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE(), MEMBER_SHOP_APP_LOGIN_CNT = CASE WHEN @APP_LOGIN_FLG = 1 THEN MEMBER_SHOP_APP_LOGIN_CNT + 1 ELSE MEMBER_SHOP_APP_LOGIN_CNT END WHERE MEMBER_ID = @MEMBER_ID";
-								let UPDATE_MST_MEMBER_SHOP = await pool.request()
-								.input("MEMBER_ID", sql.VarChar, JSON_TBL_URIAGE.MEMBER_ID)
-								.input("MEMBER_SHOP_POINT", sql.VarChar, 0)
-								.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID) 
-								.input("APP_LOGIN_FLG", sql.VarChar, GET_TBL_URIAGE.APP_LOGIN_FLG)
-								.query(SQL);
-	
-							}
-	
-							// MST_SEAT
-							let UPDATE_MST_SEAT;
-							let multiLogin = await MULTIPLE_LOGIN(JSON_TBL_URIAGE.SEAT_NO);
-							if(multiLogin) {
-								SQL = "UPDATE MST_SEAT SET LOGIN_CNT -= @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
-								UPDATE_MST_SEAT = await pool.request()
-								.input('LOGIN_CNT', sql.Int, 1)
-								.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
-								.query(SQL);
-							} else {
-								SQL = "UPDATE MST_SEAT SET LOGIN_CNT = 0, SEAT_USE_SEQ = ARG_SEAT_USE_SEQ+1, ARG_SEAT_USE_SEQ += 1 WHERE SEAT_NO = @SEAT_NO";
-								UPDATE_MST_SEAT = await pool.request()
-								.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
-								.query(SQL);	
-							}
-	
-							// MST_SEAT_STATUS
-	
-							SQL = "UPDATE TBL_SEAT_STATUS SET SEISAN_DATE = @SEISAN_DATE, SEISAN_FLG =  @SEISAN_FLG, UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
-	
-							let UPDATE_MST_SEAT_STATUS = await pool.request()
-							.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
-							.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-							.input("SEISAN_FLG", sql.Int, jsonUriageDtl.SEISAN_FLG)
-							.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
-							.query(SQL);
-	
-							// TBL_CREDIT_RIREKI
-							SQL = "UPDATE TBL_CREDIT_RIREKI SET SEISAN_FLG = @SEISAN_FLG, SEISAN_DATE = @SEISAN_DATE , UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
-							let UPDATE_TBL_CREDIT_RIREKI = await pool.request()
-							.input("SEISAN_FLG", sql.Int, jsonUriageDtl.SEISAN_FLG)
-							.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
-							.input("UPDATE_STAFF_ID", sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
-							.input("SALES_NO", sql.VarChar, jsonUriageDtl.SALES_NO)
-							.query(SQL);
-	
-							// MST_MEMBER
-	
-							SQL = "UPDATE MST_MEMBER SET LOGIN_CNT = LOGIN_CNT + 1, LAST_LOGIN_DATE = GETDATE(), APP_LOGIN_CNT = CASE WHEN @APP_LOGIN_FLG = 1 THEN APP_LOGIN_CNT + 1 ELSE APP_LOGIN_CNT END WHERE MEMBER_ID = @MEMBER_ID";
-							let UPDATE_MST_MEMBER = await pool.request()
-							.input("MEMBER_ID", sql.VarChar, JSON_TBL_URIAGE.MEMBER_ID)
-							.input("APP_LOGIN_FLG", sql.Int, GET_TBL_URIAGE.APP_LOGIN_FLG)
-							.query(SQL);
-							// appMemberId
-							if(GET_TBL_URIAGE.APP_LOGIN_FLG == 1) {
-								SQL = "SELECT APP_MEMBER_ID FROM MST_MEMBER WHERE MEMBER_ID = @MEMBER_ID;";
-								let GET_APP_MEMBER_ID = await pool.request()
-								.input('MEMBER_ID',sql.VarChar,JSON_TBL_URIAGE.MEMBER_ID)
-								.query(SQL);
-								appMemberId = GET_APP_MEMBER_ID.recordset[0].APP_MEMBER_ID;
-							}
-	
-							// DISCOUNT_YEN
-	
-							SQL = "SELECT * FROM TBL_URIAGE_DTL WHERE SALES_NO = @SALES_NO AND ITEM_KBN=@ITEM_KBN AND DELETE_FLG=0 ORDER BY TOTAL_YEN";
-							let UPDATE_DISCOUNT_YEN = await pool.request()
-							.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
-							.input("ITEM_KBN", sql.Int, 5)
-							.query(SQL);
-	
-							if(UPDATE_DISCOUNT_YEN.recordset.length > 0) {
-	
-								for(let i in UPDATE_DISCOUNT_YEN.recordset) {
-									let iObj = UPDATE_DISCOUNT_YEN.recordset[i];
-	
-									if(totalDiscountYen < iObj.TOTAL_YEN) {
-										discountYen = iObj.TOTAL_YEN;
-										totalDiscountYen -= iObj.TOTAL_YEN;
-									} else {
-										discountYen = totalDiscountYen;
-										totalDiscountYen = 0;
-									}
-	
-									SQL = "UPDATE TBL_URIAGE_DTL SET TOTAL_YEN=TOTAL_YEN - @TOTAL_YEN, ITEM_PRICE = ITEM_PRICE - @TOTAL_YEN WHERE SALES_NO=@SALES_NO AND SEQ=@SEQ AND DELETE_FLG=0";
-									let UPDATE_DISCOUNTED_YEN = await pool.request()
-									.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
-									.input("SEQ", sql.Int, iObj.SEQ)
-									.input("TOTAL_YEN", sql.Int,discountYen)
-									.query(SQL);
-	
-								}
-	
-							}
-	
+							// END TRANSACTION
 	
 						}
-						
 
 					});
-
-					
-		
-					// DATA FROM JSON TBL_URIAGE_DTL
-					
-
-					// DELETE FROM TBL_URIAGE_DTL_TEMP
-
-					// SQL = "DELETE FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID AND SALES_NO = @SALES_NO";
-					// let DELETE_UDTL_TEMP = await pool.request()
-					// .input('TOKEN_ID', sql.VarChar, reqParam.TOKEN_ID)
-					// .input('SALES_NO', sql.VarChar, iSalesDataObj.SALES_NO)
-					// .query(SQL);
-
-					_UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(reqParam.SEAT_NO,3,CNST_STAFF_ID);
-		
-					// if(GET_TOKEN_URIAGE_DTL_TEMP) {
-		
-					// } else {
-					// 	ERROR_LOGGER(0,'No Record found in TBL_URIAGE_DTL_TEMP.');
-					// 	closeConnection();
-					// }
 		
 				}
 
 			});
 
-			let UDS = await UPLOAD_DATA_SALES(uriageDtlObj.SALES_DATA);
-			console.log(UDS);
 		} catch (err) {
-			ERROR_LOGGER(0,'SINGLE_SALES_NO: '+err);
+			ERROR_LOGGER(0,'SINGLE_SALES_NO2: '+err);
 		}
-		closeConnection();
+
 	}
 
 	async function MULTIPLE_SALES_NO(salesData,GassanSeq,newMemberCnt) { // Gassan Log-out
@@ -2899,14 +2883,14 @@ app.post('/api/paid', async (req,res) => {
 		let SQL = '';
 		let result;
 		try {
-			SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
+			SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID, SEISAN_DATE = GETDATE() WHERE SEAT_NO = @SEAT_NO";
 			let UPDATE_MST_SEAT = await pool.request()
 			.input("SEAT_STATUS", sql.Int, seatStatus)
 			.input("SEAT_NO", sql.VarChar, seatNo)
 			.input("UPDATE_STAFF_ID", sql.VarChar, staffId)
 			.query(SQL);
 		} catch(err) {
-			ERROR_LOGGER(0,'UPDATE_SEAT_STATUS: '+err);
+			ERROR_LOGGER(ERROR_LOGGER.error_11,'UPDATE_SEAT_STATUS: '+err);
 		}
 		
 	}
@@ -2964,10 +2948,14 @@ app.post('/api/paid', async (req,res) => {
 			if(result.recordset.length > 0) {
 				return result.recordset;
 			} else {
-				ERROR_LOGGER(0,'No match found');
+				console.log('TBL_URIAGE: No data found');
+				sql.close();
+				return res.status(404).send(CNST_ERROR_CODE.error_2);
 			}
 		} catch(err) {
-			ERROR_LOGGER(0,'TBL_URIAGE: '+err);
+			console.log('TBL_URIAGE\n'+err);
+			sql.close();
+			return res.status(404).send(CNST_ERROR_CODE.error_11);
 		}
 		
 	}
@@ -3241,10 +3229,10 @@ app.post('/api/paid', async (req,res) => {
     }
 
 	async function ERROR_LOGGER(code,name) {
-    	let return_error = 0;
-		console.log(name);
-		return_error = code;
-    	res.json(return_error);
+    	let return_error = '';
+			console.log(name);
+			return_error = code;
+    	return res.json(return_error);
     }
 
 	// try {
