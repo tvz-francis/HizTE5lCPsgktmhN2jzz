@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev1": "nodemon apps/app1.js",
-    "dev2": "nodemon apps/machine_api.js"
+    "dev2": "nodemon apps/test3.js"
   },
   "author": "",
   "license": "ISC",

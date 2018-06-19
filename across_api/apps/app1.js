@@ -158,7 +158,14 @@ app.post('/api/sales', async (req, res) => {
 					"MEMBER_NM":obj.MEMBER_NM,
 					"MEMBER_SEX":obj.MEMBER_SEX,
 					"MAEUKE_YEN":obj.MAEUKE_YEN,
-					"SEAT_NO":obj.SEAT_NO
+					"SEAT_NO":obj.SEAT_NO,
+					"UPDATE_STAFF_ID":CNST_STAFF_ID,
+					"SHOUKEI_YEN":0,
+					"GOUKEI_YEN":0,
+					"URIAGE_YEN":0,
+					"TAX_YEN":0,
+					"AZUKARI_YEN":0,
+					"CHANGE_YEN":0
 				}
 
 				return_json.SALES_DATA.push({
@@ -175,12 +182,20 @@ app.post('/api/sales', async (req, res) => {
 			return_json.ALL_TOTAL = total_price;
 			return_json.ALL_TAX = await compute_TAX_YEN(total_price);
 		}
-	    
+
+		for(let ii in return_json.SALES_DATA) {
+			let OBJO = return_json.SALES_DATA[ii];
+			let __COMPUTE = await COMPUTE_TOTAL_YEN(OBJO.TBL_URIAGE_DTL,OBJO.TBL_URIAGE);
+		}
+		let _END_PROC = await END_PROC();
 	} catch(err) {
 		sendError(CNST_ERROR_CODE.error_11,'get tbl uriage\n'+err);
 	}
-	res.status(200).json(return_json);
-  closeConnection();
+
+	async function END_PROC() {
+		sql.close();
+		return res.status(200).json(return_json);
+	}
 
 	async function GROUPED_SALES_NO(uriageDtl) {
 		let groupedSalesNo = {};
@@ -219,6 +234,7 @@ app.post('/api/sales', async (req, res) => {
 						for(let iSALES_DATA in return_json.SALES_DATA) {
 							let item = return_json.SALES_DATA[iSALES_DATA];
 							if(item.TBL_URIAGE.SALES_NO == xObj.SALES_NO) {
+								xObj['SEISAN_DATE'] = SEISAN_DATE;
 								item.TBL_URIAGE_DTL.push(xObj);
 							}
 						}
@@ -228,6 +244,9 @@ app.post('/api/sales', async (req, res) => {
 				}
 				
 			}
+
+
+
 		} catch(err) {
 			sendError(0,'GROUPED_ITEM: '+err);
 		}
@@ -245,9 +264,9 @@ app.post('/api/sales', async (req, res) => {
 			TBL_SEAT_STATUS = TBL_SEAT_STATUS.recordset[0];
 			return_data.SALES_NO = TBL_SEAT_STATUS.SALES_NO;
 			return_data.SEISAN_DATE = SEISAN_DATE;
-			return_data.SEISAN_FLG = TBL_SEAT_STATUS.SEISAN_FLG;
+			// return_data.SEISAN_FLG = TBL_SEAT_STATUS.SEISAN_FLG;
 			return_data.UPDATE_STAFF_ID = CNST_STAFF_ID;
-			return_data.UPDATE_DATE = SEISAN_DATE;
+			// return_data.UPDATE_DATE = SEISAN_DATE;
 		} catch(err) {
 			console.log(err);
 			sql.close();
@@ -558,7 +577,7 @@ app.post('/api/sales', async (req, res) => {
 						BASE_MIN:obj.BASE_MIN,
 						DELETE_FLG:obj.DELETE_FLG,
 						FOOD_KBN:obj.FOOD_KBN,
-						INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
+						// INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
 						INPUT_STAFF_ID:obj.INPUT_STAFF_ID,
 						ITEM_ID:obj.ITEM_ID,
 						ITEM_KBN:obj.ITEM_KBN,
@@ -577,7 +596,7 @@ app.post('/api/sales', async (req, res) => {
 						TAX_KBN:obj.TAX_KBN,
 						TOTAL_YEN:obj.TOTAL_YEN,
 						// UPDATE_DATE:obj.UPDATE_DATE,
-						UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
+						UPDATE_STAFF_ID:CNST_STAFF_ID
 					});
 					total_price += parseInt(obj.TOTAL_YEN);
 					SEQ++;
@@ -596,7 +615,7 @@ app.post('/api/sales', async (req, res) => {
 									BASE_MIN:autoPack.BASE_MIN,
 									DELETE_FLG:obj.DELETE_FLG,
 									FOOD_KBN:null,
-									INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
+									// INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
 									INPUT_STAFF_ID:obj.INPUT_STAFF_ID,
 									ITEM_ID:autoPack.ITEM_ID,
 									ITEM_KBN:obj.ITEM_KBN,
@@ -615,7 +634,7 @@ app.post('/api/sales', async (req, res) => {
 									TAX_KBN:obj.TAX_KBN,
 									TOTAL_YEN:autoPack.TOTAL_YEN,
 									// UPDATE_DATE:obj.UPDATE_DATE,
-									UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
+									UPDATE_STAFF_ID:CNST_STAFF_ID
 								});
 								total_price += parseInt(obj.TOTAL_YEN);
 								SEQ++;
@@ -633,7 +652,7 @@ app.post('/api/sales', async (req, res) => {
 								BASE_MIN:obj2.EX_BASE_MIN,
 								DELETE_FLG:obj.DELETE_FLG,
 								FOOD_KBN:null,
-								INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
+								// INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
 								INPUT_STAFF_ID:obj.INPUT_STAFF_ID,
 								ITEM_ID:obj2.ITEM_ID,
 								ITEM_KBN:obj.ITEM_KBN,
@@ -652,7 +671,7 @@ app.post('/api/sales', async (req, res) => {
 								TAX_KBN:obj.TAX_KBN,
 								TOTAL_YEN:obj.ITEM_PRICE,
 								// UPDATE_DATE:obj.UPDATE_DATE,
-								UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
+								UPDATE_STAFF_ID:CNST_STAFF_ID
 							});
 							total_price += parseInt(obj.TOTAL_YEN);
 							SEQ++;
@@ -667,7 +686,7 @@ app.post('/api/sales', async (req, res) => {
 								BASE_MIN:exobj.BASE_MIN,
 								DELETE_FLG:obj.DELETE_FLG,
 								FOOD_KBN:null,
-								INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
+								// INPUT_DATE:(obj.INPUT_DATE == null)?null:convert_datetime(obj.INPUT_DATE),
 								INPUT_STAFF_ID:obj.INPUT_STAFF_ID,
 								ITEM_ID:exobj.ITEM_ID,
 								ITEM_KBN:exobj.ITEM_KBN,
@@ -686,7 +705,7 @@ app.post('/api/sales', async (req, res) => {
 								TAX_KBN:obj.TAX_KBN,
 								TOTAL_YEN:exobj.TOTAL_YEN,
 								// UPDATE_DATE:obj.UPDATE_DATE,
-								UPDATE_STAFF_ID:obj.UPDATE_STAFF_ID
+								UPDATE_STAFF_ID:CNST_STAFF_ID
 							});
 							total_price += parseInt(exobj.TOTAL_YEN);
 							SEQ++;
@@ -1275,7 +1294,7 @@ app.post('/api/sales', async (req, res) => {
 		try{
 			let query = await pool.request()
 	        .input('seatno', sql.Int, seat_no)
-	        .query("SELECT SUM([TBL_URIAGE].[URIAGE_YEN]) AS [ALL_TOTAL] FROM [POS-_-00141-_-4_04].[dbo].[TBL_URIAGE] AS [TBL_URIAGE] WHERE [TBL_URIAGE].[SEAT_NO] = @seatno AND [TBL_URIAGE].[DELETE_FLG] = 0 AND [TBL_URIAGE].[SEISAN_FLG] = 0;");
+	        .query("SELECT SUM([TBL_URIAGE].[URIAGE_YEN]) AS [ALL_TOTAL] FROM [TBL_URIAGE] WHERE [TBL_URIAGE].[SEAT_NO] = @seatno AND [TBL_URIAGE].[DELETE_FLG] = 0 AND [TBL_URIAGE].[SEISAN_FLG] = 0;");
 	        return return_json.ALL_TOTAL * (tax_rate / (100 + await TAX_RATE(_getDate)));
 		} catch(err) {
 			sendError(0,'get all tax');
@@ -1285,35 +1304,36 @@ app.post('/api/sales', async (req, res) => {
 	async function TAX_RATE(date) {
 		try{
 			let query = await pool.request()
-	        .query("SELECT TOP(1) CONVERT(char(10), [MST_TAX].[START_DATE],120) AS [START_DATE], [TAX_RATE] FROM [POS-_-00141-_-4_04].[dbo].[MST_TAX] AS [MST_TAX] ORDER BY [START_DATE] DESC;");
-	        let data = query.recordset[0];
-	        if(date <= data.START_DATE) {
-		    	result = data.TAX_RATE;
-		    } else {
-		    	result = 0;
-		    }
-		    return result;
+			.query("SELECT TOP(1) CONVERT(char(10), [MST_TAX].[START_DATE],120) AS [START_DATE], [TAX_RATE] FROM [MST_TAX] ORDER BY [START_DATE] DESC;");
+			let data = query.recordset[0];
+			if(date <= data.START_DATE) {
+				result = data.TAX_RATE;
+			} else {
+				result = 0;
+			}
+			return result;
 		} catch(err) {
-			sendError(0,'tax rate');
+			console.log(err);
+			sendError(CNST_ERROR_CODE.error_11,'tax rate');
 		}
 	}
 
-    async function compute_TAX_YEN(price) {
-    	let result = 0;
-    	try{
-			let query = await pool.request()
-			.query("SELECT TOP(1) CONVERT(char(10), [MST_TAX].[START_DATE],120) AS [START_DATE], [TAX_RATE] FROM [MST_TAX] AS [MST_TAX] ORDER BY [START_DATE] DESC;");
-			let data = query.recordset[0];
-		    if(_getDate <= data.START_DATE) {
-		    	result = price / (100 + data.TAX_RATE) * (data.TAX_RATE);
-		    } else {
-		    	result = price * (data.TAX_RATE / 100);
-		    }
-		    return Math.floor(result);
-	    } catch(err) {
-	    	sendError(CNST_ERROR_CODE.error_11,'compute tax yen\n'+err);
-	    }
-    }
+	async function compute_TAX_YEN(price) {
+		let result = 0;
+		try{
+		let query = await pool.request()
+		.query("SELECT TOP(1) CONVERT(char(10), [MST_TAX].[START_DATE],120) AS [START_DATE], [TAX_RATE] FROM [MST_TAX] AS [MST_TAX] ORDER BY [START_DATE] DESC;");
+		let data = query.recordset[0];
+			if(_getDate <= data.START_DATE) {
+				result = price / (100 + data.TAX_RATE) * (data.TAX_RATE);
+			} else {
+				result = price * (data.TAX_RATE / 100);
+			}
+			return Math.floor(result);
+		} catch(err) {
+			sendError(CNST_ERROR_CODE.error_11,'compute tax yen\n'+err);
+		}
+	}
 
     async function TBL_URIAGE_DTL(SALES_NO) {
 
@@ -1354,6 +1374,153 @@ app.post('/api/sales', async (req, res) => {
 			return min;
 		}
 
+		async function COMPUTE_TOTAL_YEN(temp_uriage_dtl,tbluriage) {
+			
+			let taxRate = 0;
+			let syoukeiYen = 0;
+			let tSyoukeiYen = 0;
+			let TaxYen = 0;
+			let DiscountYen = 0;
+			let TDiscountYen = 0;
+			let CreditYen = 0;
+			let MaebaraiYen = 0;
+			let TMaebaraiYen = 0;
+			let TotalYen = 0;
+			let TTotalYen = 0;
+			let ZanSeisanYen = 0;
+			let ChangeYen = 0;
+			let UsePoint = 0;
+			let AddPoint = 0;
+			let TTaxYen = 0;
+	
+			let TDiscountAccess = 0;
+			let TotalCreditYenTemp = 0;
+	
+			try {
+				
+				taxRate = await TAX_RATE(SEISAN_DATE.split(' ')[0]);
+	
+				DiscountYen = 0;
+				SyoukeiYen = 0;
+				MaebaraiYen = 0;
+				TaxYen = 0;
+				TotalYen = 0;
+	
+				// compute all temp_uriage_dtl
+	
+				for(let i in temp_uriage_dtl) {
+					let obj = temp_uriage_dtl[i];
+					if(obj.ITEM_KBN != 5) {
+						syoukeiYen += obj.TOTAL_YEN;
+					} else {
+						DiscountYen += obj.TOTAL_YEN;
+					}
+					
+				}
+	
+				MaebaraiYen = tbluriage.MAEUKE_YEN;
+	
+				//Tax Yen
+				// TaxYen = Common.CalcTaxPrice(TaxRate, SyoukeiYen, Shop.TAX_FLG);
+	
+				let _MST_SHOP = await GET_MST_SHOP();
+	
+				// Tax Yen
+				TaxYen = await CALC_TAX_PRICE(taxRate,syoukeiYen,_MST_SHOP[0].TAX_FLG);
+	
+				// Total Yen
+				if(_MST_SHOP[0].TAX_FLG == 0) {
+					TotalYen = syoukeiYen + DiscountYen;
+				} else {
+					TotalYen = syoukeiYen + TaxYen + DiscountYen;
+				}
+	
+				TotalYen = (TotalYen < 0) ? 0 : TotalYen;
+	
+				// tbluriage.SHOUKEI_YEN = syoukeiYen;
+				// tbluriage.GOUKEI_YEN = TotalYen;
+				// tbluriage.URIAGE_YEN = TotalYen;
+				// tbluriage.TAX_KBN = _MST_SHOP[0].TAX_FLG;
+				// tbluriage.TAX_YEN = TaxYen;
+	
+				// TMaebaraiYen += MaebaraiYen;
+				// TSyoukeiYen += SyoukeiYen;
+				// TDiscountYen += DiscountYen;
+				// TTotalYen += TotalYen;
+				// TTaxYen += TaxYen;
+	
+				TMaebaraiYen = MaebaraiYen;
+				tSyoukeiYen = syoukeiYen;
+				TDiscountYen = DiscountYen;
+				TTotalYen = TotalYen;
+				TTaxYen = TaxYen;
+
+				tbluriage.SHOUKEI_YEN = tSyoukeiYen;
+				tbluriage.GOUKEI_YEN = TotalYen;
+				tbluriage.URIAGE_YEN = TotalYen;
+				tbluriage.TAX_KBN = _MST_SHOP[0].TAX_FLG;
+				tbluriage.TAX_YEN = TTaxYen;
+	
+				if(DiscountYen * -1 > syoukeiYen) {
+					TDiscountAccess = (DiscountYen * -1) - syoukeiYen;
+				}
+	
+				// ZanSeisanYen = TTotalYen - CreditYen - TMaebaraiYen - tbluriage.USE_POINT;
+				// ZanSeisanYen = (ZanSeisanYen < 0) ? 0 : ZanSeisanYen;
+				
+				let returnObj = {
+					SyoukeiYen:tSyoukeiYen,
+					TaxYen:TTaxYen,
+					GoukeiYen:tbluriage.GOUKEI_YEN,
+					UriageYen:tbluriage.URIAGE_YEN
+					// DiscountYen:TDiscountYen,
+					// CreditYen:CreditYen,
+					// MaebaraiYen:TMaebaraiYen,
+	
+					// ZanSeisanYen:ZanSeisanYen - TDiscountAccess,
+					// UsePoint:tbluriage.USE_POINT,
+					// ChangeYen:(ChangeYen < 0) ? 0 : ChangeYen,
+					// AddPoint:AddPoint
+				};
+	
+				// TotalCreditYenTemp = Convert.ToInt32(lblCreditYen.Value);
+				return returnObj;
+			} catch(err) {
+				ERROR_LOGGER(0,'COMPUTE_TOTAL_YEN: '+err);
+			}
+	
+		}
+
+		async function GET_MST_SHOP() {
+			try {
+				let result = await pool.request()
+				.query("SELECT * FROM MST_SHOP;");
+				if(result.recordset.length > 0) {
+					return result.recordset;
+				} else {
+					return false;
+				}
+			} catch(err) {
+				ERROR_LOGGER(0,'MST_SHOP: '+err);
+			}
+		}
+	
+		async function CALC_TAX_PRICE(taxRate,price,taxKbn) {
+	
+			let result = 0;
+	
+			try {
+	
+				if(taxKbn == 0) {
+					result = Math.floor(price / (100 + taxRate) * taxRate);
+				}
+	
+			} catch(err) {
+				ERROR_LOGGER(0,'CALC_TAX_PRICE: '+err);
+			}
+			return result;
+		}
+
     async function closeConnection() {
     	return await sql.close();
     }
@@ -1362,8 +1529,7 @@ app.post('/api/sales', async (req, res) => {
     	return_error = code;
 			console.log(name);
 			sql.close();
-    	res.json(return_error);
-    	return;
+    	return res.json(return_error);
     }
 });
 //#endregion API-SALES
@@ -1711,9 +1877,8 @@ app.post('/api/paid', async (req,res) => {
 				let uriage_yen = 0;
 
 				SQL = "INSERT INTO TBL_GASSAN (GASSAN_NO, GASSAN_CNT, NEW_MEMBER_CNT, TOTAL_YEN, URIAGE_YEN, MAEBARAI_YEN, AZUKARI_YEN, CREDIT_YEN, CHANGE_YEN, DELETE_FLG, INPUT_STAFF_ID, INPUT_DATE, TAX_YEN, TAX_KBN)VALUES (@GASSAN_NO, @GASSAN_CNT, @NEW_MEMBER_CNT, @TOTAL_YEN, @URIAGE_YEN, @MAEBARAI_YEN, @AZUKARI_YEN, @CREDIT_YEN, @CHANGE_YEN, 0, @INPUT_STAFF_ID, @INPUT_DATE, @TAX_YEN, @TAX_KBN)";
-
 				let INSERT_TBL_GASSAN = await pool.request()
-				.input("GASSAN_NO", sql.VarChar, TBL_GASSAN.GASSAN_NO)
+				.input("GASSAN_NO", sql.VarChar(12), TBL_GASSAN.GASSAN_NO)
 				.input("GASSAN_CNT", sql.Int, VisitorCount)
 				.input("NEW_MEMBER_CNT", sql.Int, newMemberCnt)
 				.input("TOTAL_YEN", sql.Int, TBL_GASSAN.TOTAL_YEN)
@@ -1722,16 +1887,15 @@ app.post('/api/paid', async (req,res) => {
 				.input("AZUKARI_YEN", sql.Int, TBL_GASSAN.AZUKARI_YEN)
 				.input("CREDIT_YEN", sql.Int, TBL_GASSAN.CREDIT_YEN)
 				.input("CHANGE_YEN", sql.Int, TBL_GASSAN.CHANGE_YEN)
-				.input("INPUT_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
+				.input("INPUT_STAFF_ID", sql.VarChar(12), CNST_STAFF_ID)
 				.input("INPUT_DATE", sql.DateTime2(0), SEISAN_DATE)
 				.input("TAX_YEN", sql.Int, TBL_GASSAN.TAX_YEN)
 				.input("TAX_KBN", sql.Int, 0)
 				.query(SQL);
 
 				//close connection
-				sql.close();
-				return res.status(200).send(CNST_ERROR_CODE.error_0);
-
+				
+				let _END_PROC = await END_PROC();
 			} catch(err) {
 				ERROR_LOGGER(CNST_ERROR_CODE.error_11,'AFTER MULTIPLE_SALES_DATA\n'+err);
 			}
@@ -1740,6 +1904,11 @@ app.post('/api/paid', async (req,res) => {
 
 	} else {
 		ERROR_LOGGER(CNST_ERROR_CODE.error_11,'_VALIDATE_LOGOUT_PARAM\n');
+	}
+
+	async function END_PROC() {
+		sql.close();
+		return res.status(200).send(CNST_ERROR_CODE.error_0);
 	}
 
 	async function UPLOAD_SALES(jsonSales,callback) {
@@ -2074,7 +2243,7 @@ app.post('/api/paid', async (req,res) => {
 				.input('CHANGE_YEN', sql.Int, JSON_TBL_URIAGE.CHANGE_YEN)
 				.input('USE_POINT', sql.Int, GET_TBL_URIAGE.USE_POINT)
 				.input('URIAGE_YEN', sql.Int, JSON_TBL_URIAGE.URIAGE_YEN)
-				.input('SEISAN_FLG', sql.TinyInt, JSON_TBL_URIAGE.SEISAN_FLG)
+				.input('SEISAN_FLG', sql.TinyInt, 1)
 				.input('ADD_POINT', sql.Int, GET_TBL_URIAGE.ADD_POINT)
 				.input('TAX_YEN', sql.Int, JSON_TBL_URIAGE.TAX_YEN)
 				.input('SEAT_NO', sql.VarChar(4), JSON_TBL_URIAGE.SEAT_NO)
@@ -2636,7 +2805,7 @@ app.post('/api/paid', async (req,res) => {
 				.input('AZUKARI_YEN', sql.Int, JSON_TBL_URIAGE.AZUKARI_YEN)
 				.input('CHANGE_YEN', sql.Int, JSON_TBL_URIAGE.CHANGE_YEN)
 				.input('URIAGE_YEN', sql.Int, JSON_TBL_URIAGE.URIAGE_YEN)
-				.input('SEISAN_FLG', sql.TinyInt, JSON_TBL_URIAGE.SEISAN_FLG)
+				.input('SEISAN_FLG', sql.Int, 1)
 				.input('ADD_POINT', sql.Int, GET_TBL_URIAGE.ADD_POINT)
 				.input('TAX_YEN', sql.Int, JSON_TBL_URIAGE.TAX_YEN)
 				.input("GASSAN_SALES_NO", sql.VarChar(12), JSON_TBL_URIAGE.GASSAN_SALES_NO)
@@ -2738,21 +2907,21 @@ app.post('/api/paid', async (req,res) => {
 
 					}
 
-					// MST_SEAT
-					let UPDATE_MST_SEAT;
-					let multiLogin = await MULTIPLE_LOGIN(JSON_TBL_URIAGE.SEAT_NO);
-					if(multiLogin) {
-						SQL = "UPDATE MST_SEAT SET LOGIN_CNT -= @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
-						UPDATE_MST_SEAT = await pool.request()
-						.input('LOGIN_CNT', sql.Int, 1)
-						.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
-						.query(SQL);
-					} else {
-						SQL = "UPDATE MST_SEAT SET LOGIN_CNT = 0, SEAT_USE_SEQ = ARG_SEAT_USE_SEQ+1, ARG_SEAT_USE_SEQ += 1 WHERE SEAT_NO = @SEAT_NO";
-						UPDATE_MST_SEAT = await pool.request()
-						.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
-						.query(SQL);	
-					}
+					// // MST_SEAT
+					// let UPDATE_MST_SEAT;
+					// let multiLogin = await MULTIPLE_LOGIN(JSON_TBL_URIAGE.SEAT_NO);
+					// if(multiLogin) {
+					// 	SQL = "UPDATE MST_SEAT SET LOGIN_CNT -= @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
+					// 	UPDATE_MST_SEAT = await pool.request()
+					// 	.input('LOGIN_CNT', sql.Int, 1)
+					// 	.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
+					// 	.query(SQL);
+					// } else {
+					// 	SQL = "UPDATE MST_SEAT SET LOGIN_CNT = 0, SEAT_USE_SEQ = ARG_SEAT_USE_SEQ+1, ARG_SEAT_USE_SEQ += 1 WHERE SEAT_NO = @SEAT_NO";
+					// 	UPDATE_MST_SEAT = await pool.request()
+					// 	.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
+					// 	.query(SQL);	
+					// }
 
 					// MST_SEAT_STATUS
 
@@ -2827,13 +2996,28 @@ app.post('/api/paid', async (req,res) => {
 
 
 				}
+				// MST_SEAT
+				let UPDATE_MST_SEAT;
+				let multiLogin = await MULTIPLE_LOGIN(JSON_TBL_URIAGE.SEAT_NO);
+				if(multiLogin) {
+					SQL = "UPDATE MST_SEAT SET LOGIN_CNT -= @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
+					UPDATE_MST_SEAT = await pool.request()
+					.input('LOGIN_CNT', sql.Int, 1)
+					.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
+					.query(SQL);
+				} else {
+					SQL = "UPDATE MST_SEAT SET LOGIN_CNT = 0, SEAT_USE_SEQ = ARG_SEAT_USE_SEQ+1, ARG_SEAT_USE_SEQ += 1 WHERE SEAT_NO = @SEAT_NO";
+					UPDATE_MST_SEAT = await pool.request()
+					.input('SEAT_NO', sql.VarChar, JSON_TBL_URIAGE.SEAT_NO)
+					.query(SQL);	
+				}
 				// _UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(reqParam.SEAT_NO,3,CNST_STAFF_ID);
 			}
 			// let UDS = await UPLOAD_DATA_SALES(salesData.SALES_DATA);
 			// console.log(UDS);
 			newMemberCnt = CtrnewMemberCnt;
 		} catch(err) {
-			ERROR_LOGGER(0,'MULTIPLE_SALES_NO: '+err);
+			ERROR_LOGGER(CNST_ERROR_CODE.error_11,'MULTIPLE_SALES_NO: '+err);
 		}
 		return visitorcnt;
 	}
