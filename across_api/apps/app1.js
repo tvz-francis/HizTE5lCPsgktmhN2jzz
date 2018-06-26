@@ -3577,69 +3577,80 @@ app.post('/api/paid', async (req,res) => {
 app.post('/api/coupon_search', async (req,res) => {
 
 	const request = require('request');
-
 	try{
 
-		let postRules = ['COUPON_ID','SHOP_FC_NO'];
+		let rules = {'coupon_search':'Required.'};
 
-		for(let i in postRules) {
-			let rule = postRules[i];
+		postValidation(rules,req.body)
+		.then(async result => {
 
-			if(!req.body[rule]) {
-				// res.json(2);
-				ERROR_LOGGER(CNST_ERROR_CODE.error_3,'VERIFICATION ERROR\n');
-				return;
-			}
-		}
+			let { coupon_search } = req.body;
 
-		const {COUPON_ID,SHOP_FC_NO} = req.body;
-		let postData = {
-			"apikey": "cc03e747a6afbbcbf8be7668acfebee5",
-			"coupon_id": COUPON_ID,
-			"shop_fc_no": SHOP_FC_NO
-		};
-	
-		const request_opt = {
-			method: 'post',
-			body: postData,
-			json: true,
-			url: 'http://coupon.across-web.net/api/v2/machine/coupon_search'
-		};
-	
-		request(request_opt,(err, httpResponse, body) => {
-			if(err) ERROR_LOGGER(CNST_ERROR_CODE.error_1,'VERIFICATION ERROR\n');
-			if(body.code == 1) {
-				let data = body.coupon;
-		
-				return_json = {
-					"COUPON_ID":data.item_id,
-					"COUPON_NM":data.item_nm,
-					"PRICE_TYPE":data.price_flg,
-					"ITEM_KBN":data.coupon_kbn
-				};
-				if(data.price_flg == 1) {
-					return_json['COUPON_PRICE'] = data.item_yen;
-				} else{
-					return_json['COUPON_DISCOUNT'] = data.item_yen;
-				}
-				sql.close();
-				return res.status(200).json(return_json);
-			} else {
-				sql.close();
-				return res.status(404).json(CNST_ERROR_CODE.error_4);
-			}
+			let coupon_rules = {
+				"pos_members":"Required pos_members",
+				"coupon_id":"Required coupon_id",
+				"shop_fc":"Required shop_fc",
+				"post_date":"Required post_date"
+			};
+
+			postValidation(coupon_rules,coupon_search)
+			.then(async result => {
+				sendRequestAPI(coupon_search);
+			}).catch(err => {
+				console.log(`2nd level\n${err}`);
+				return res.status(400).json(CNST_ERROR_CODE.error_3);
+			});
+
+		})
+		.catch(err => {
+			console.log(`1st level\n${err}`);
+			return res.status(400).json(CNST_ERROR_CODE.error_3);
 		});
 
 	} catch(err) {
-		ERROR_LOGGER(CNST_ERROR_CODE.error_1,'API-COUPON_SEARCH:\n'+err);
+		console.log(`API-COUPON_SEARCH:\n ${err}`);
+		return res.status(404).json(CNST_ERROR_CODE.error_1);
 	}
 
-	async function ERROR_LOGGER(code,name) {
-		let return_error = '';
-		console.log(name);
-		return_error = code;
-		sql.close();
-		return res.status(404).send(return_error);
+	function sendRequestAPI(coupon_search) {
+
+		try {
+			let postData = {
+				"apikey": "cc03e747a6afbbcbf8be7668acfebee5",
+				"coupon_search":coupon_search
+			};
+	
+			const request_opt = {
+				method: 'post',
+				body: postData,
+				json: true,
+				url: 'http://coupon.across-web.net/api/v2/machine/search/coupon'
+				// 'http://coupon.across-web.net/api/v2/machine/coupon_search'
+			};
+		
+			request(request_opt,(err, httpResponse, body) => {
+				if(err) return res.status(400).json(CNST_ERROR_CODE.error_11);
+				let { code } = body;
+
+				let errorCode = {
+					1: () => { return body; },
+					2: () => { return CNST_ERROR_CODE.error_3; },
+					3: () => { return CNST_ERROR_CODE.error_2; },
+					4: () => { return CNST_ERROR_CODE.error_4; },
+					'default': () => { return CNST_ERROR_CODE.error_11; }
+				};
+				if(errorCode[body.code]() !== 'undefined') {
+					return res.status(200).json(errorCode[body.code]());
+				} else {
+					return res.status(200).json(errorCode['default']());
+				}
+
+			});
+
+		} catch(err) {
+			console.log(err);
+			return res.status(400).json(CNST_ERROR_CODE.error_11);
+		}
 	}
 
 });
