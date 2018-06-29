@@ -3,7 +3,6 @@ const app = express();
 const bodyParser = require('body-parser');
 const sql = require('mssql');
 const crypto = require('crypto');
-const fs = require('fs');
 // const mysql = require('mysql');
 // const dateFormat = require('dateformat');
 // const querystring = require('querystring');
@@ -33,7 +32,6 @@ let userPassValidation = function(req,res,next) {
 	if(req.method != 'POST') res.end();
 	try{
 		if(req.body.username == CNST_USERNAME && req.body.password == CNST_PASSWORD) {
-			REQUEST_LOG(req);
 			next();
 		} else {
 			throw 'Username and Password authentication failed.';
@@ -53,7 +51,119 @@ const config = {
 	server:'192.168.128.121\\sqlexpress',
 	database:'APITestDB'
 };
-const logFile = __dirname+'/logs';
+
+app.post('/api/sales2',async(req, res) => {
+
+	const rules = { seat_no:'Required' };
+
+	let pool = await sql.connect(config);
+	postValidation(rules,req.body)
+	.then(async() => {
+		const TITLE = 'API-SALES';
+		let qCode = '';
+		let tblUriage = [];
+		let tblUriageDtl = [];
+		let { seat_no } = req.body;
+		let SQL = '';
+
+		// CHECK SEAT_NO DATA
+		qCode = 'q1000';
+		SQL = "SELECT * FROM TBL_URIAGE WHERE SEAT_NO = @SEAT_NO AND DELETE_FLG = 0 AND SEISAN_FLG = 0";
+		let TBL_URIAGE = await pool.request()
+		.input('SEAT_NO', sql.NVarChar, seat_no)
+		.query(SQL);
+		if(TBL_URIAGE.recordset.length === 0) {
+			console.log(`${TITLE} ${qCode}(No records found)`);
+			sql.close();
+			return res.status(404).json(CNST_ERROR_CODE.error_2);
+		} else {
+			// CHECK SEAT STATUS return IF 2.
+			qCode = 'q1001';
+			SQL = "SELECT SEAT_STATUS FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO";
+			let SEAT_STATUS_2 = await pool.request()
+			.input('SEAT_NO', sql.NVarChar, seat_no)
+			.query(SQL);
+			if(SEAT_STATUS_2.recordset[0].SEAT_STATUS == 2) {
+				console.log(`${TITLE} ${qCode}(seat status is 2)`);
+				sql.close();
+				return res.status(404).json(CNST_ERROR_CODE.error_5);
+			} else {
+				tblUriage = TBL_URIAGE.recordset;
+				tblUriageDtl = await TBL_URIAGE_DTL(tblUriage);
+
+				// // UPDATE SEAT_STATUS
+				// qCode = 'q1002';
+				// SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
+				// let UPDATE_MST_SEAT = await pool.request()
+				// .input("SEAT_STATUS", sql.Int, 2)
+				// .input("SEAT_NO", sql.VarChar, seat_no)
+				// .input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
+				// .query(SQL);
+
+				let COMPUTE = await EXT_AUTOPACK(tblUriage,tblUriageDtl);
+
+				// sql.close();
+				return res.status(200).json({URIAGE:tblUriage,URIAGE_DTL:tblUriageDtl});
+			}
+
+		}
+
+		// return res.status(200).json('SUCCESS');
+	})
+	.catch(err => {
+		console.log(err);
+		sql.close();
+		return res.status(400).json(CNST_ERROR_CODE.error_3);
+	});
+
+	async function EXT_AUTOPACK(uriage,uriageDtl) {
+		// console.log(uriage,uriageDtl);
+		let SQL = "";
+		for(let i in uriage) {
+			let { SALES_NO,LOGIN_DATE,INPUT_DATE,UPDATE_DATE } = uriage[i];
+			uriage[i].LOGIN_DATE = convert_datetime(LOGIN_DATE);
+			uriage[i].INPUT_DATE = convert_datetime(INPUT_DATE);
+			uriage[i].UPDATE_DATE = convert_datetime(UPDATE_DATE);
+			uriageDtl.map(async(row,index,array) => {
+				if(SALES_NO === row.SALES_NO && row.ITEM_KBN === 0) {
+
+					SQL = "SELECT D.SEAT_USE_START_DATE, D.ITEM_ID, D.ITEM_NM, S.CHANGE_PRICE_FLG, S.BASE_MIN AS SEAT_BASE_MIN, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN, CONVERT(varChar,S.PACK_END_TIME) AS PACK_END_TIME, AUTO_PACK_ID, D.ITEM_SEQ FROM TBL_URIAGE_DTL D INNER JOIN MST_SEAT_ITEM S ON D.ITEM_ID = S.ITEM_ID INNER JOIN MST_EX_SEAT_ITEM E ON S.EX_ITEM_ID = E.ITEM_ID WHERE S.SEQ = 0 AND E.SEQ = 0 AND D.SALES_NO = @salesno AND D.ITEM_ID = @itemid AND D.DELETE_FLG = '0'";
+					let query = await pool.request()
+					.input('salesno', sql.Int, row.SALES_NO)
+					.input('itemid', sql.VarChar, row.ITEM_ID)
+					.query(SQL,(err,result) => {
+						sql.close();
+						console.log(err,result);
+					});
+					// console.log(query);
+				}
+			});
+			
+		}
+	}
+
+	async function TBL_URIAGE_DTL(uriage) {
+		let SQL = '';
+		let uriageDtl = [];
+		try {
+			for(let i in uriage) {
+				SQL = "SELECT * FROM [TBL_URIAGE_DTL] AS [TBL_URIAGE_DTL] WHERE [TBL_URIAGE_DTL].[SALES_NO] = @SALES_NO;";
+				let result = await pool.request()
+				.input('SALES_NO', sql.Int, uriage[i].SALES_NO)
+				.query(SQL);
+				for(let i2 in result.recordset) {
+					uriageDtl.push(result.recordset[i2]);
+				}
+			}
+		} catch(err) {
+			console.log(err);
+			sql.close();
+			return res.status(400).json(CNST_ERROR_CODE.error_3);
+		}
+		return uriageDtl;
+	}
+
+});
 
 //#region API-SALES
 app.post('/api/sales', async (req, res) => {
@@ -82,7 +192,7 @@ app.post('/api/sales', async (req, res) => {
 	// POST DATE / END DATE
 	let SEISAN_DATE = dateTimeNow();
 
-	// let TBL_URIAGE_DTL_CLASS = [];
+	let TBL_URIAGE_DTL_CLASS = [];
 	let username = param.username;
 	let password = param.password;
 	let seat_no = param.seat_no;
@@ -96,7 +206,7 @@ app.post('/api/sales', async (req, res) => {
 
 	let _uriage = '';
 	let autoPackClass = [];
-	// let uriageDtlToToken = [];
+	let uriageDtlToToken = [];
 	let tempUriageDtl = {};
 	let total_price = 0;
 	let all_tax = 0;
@@ -133,12 +243,12 @@ app.post('/api/sales', async (req, res) => {
 		}
 
 		// UPDATE SEAT_STATUS
-		let SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
-		let UPDATE_MST_SEAT = await pool.request()
-		.input("SEAT_STATUS", sql.Int, 2)
-		.input("SEAT_NO", sql.VarChar, param.seat_no)
-		.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
-		.query(SQL);
+		// let SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
+		// let UPDATE_MST_SEAT = await pool.request()
+		// .input("SEAT_STATUS", sql.Int, 2)
+		// .input("SEAT_NO", sql.VarChar, param.seat_no)
+		// .input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
+		// .query(SQL);
 
 		let result1 = await pool.request()
 		.input('seatno', sql.Int, seat_no)
@@ -314,7 +424,7 @@ app.post('/api/sales', async (req, res) => {
 		let itemSequence = 0;
 		let exItemMin = 0;
 
-		let endDate = SEISAN_DATE;
+		let endDate = dateTimeNow();
 		let index = 0;
 		let UDTL = [];
 		
@@ -1712,9 +1822,9 @@ app.post('/api/init', async (req,res) => {
 app.post('/api/deposit', async (req,res) => {
 
 	let SQL = '';
+	let pool = await sql.connect(config);
 
 	try {
-		
 
 		let postDataRules = {
 			"SALES_NO":"Required Sales no", 
@@ -1725,37 +1835,49 @@ app.post('/api/deposit', async (req,res) => {
 		
 		postValidation(postDataRules,req.body)
 		.then(async(result) => {
-			let pool = await sql.connect(config);
+			
+			let SALES_NO = req.body.SALES_NO;
+			let MEMBER_ID = req.body.MEMBER_ID;
+			let DEPOSIT_AMOUNT = req.body.DEPOSIT_AMOUNT;
+			let AWAY_TIME = req.body.AWAY_TIME;
 
-			let { SALES_NO,MEMBER_ID,DEPOSIT_AMOUNT,AWAY_TIME } = req.body;
+			// let GET_TBL_URIAGE = await pool.request()
+			// .input('SALES_NO', sql.VarChar, SALES_NO)
+			// .query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
+
+			// let TBL_GATE_SEQ = await pool.request()
+			// .input('SEAT_NO', sql.VarChar, SALES_NO)
+			// .query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
+
+			// console.log(TBL_GATE_SEQ);
+			// return res.end();
 
 			// VALIDATE SALES NO AND MEMBER ID
 			SQL = "SELECT * FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO AND MEMBER_ID = @MEMBER_ID";
 			let VALIDATE_SALES_NO = await pool.request()
-			.input('SALES_NO', sql.VarChar(12),SALES_NO)
-			.input('MEMBER_ID', sql.VarChar(12),MEMBER_ID)
+			.input('SALES_NO', sql.VarChar,SALES_NO)
+			.input('MEMBER_ID', sql.VarChar,MEMBER_ID)
 			.query(SQL);
 
 			if(VALIDATE_SALES_NO.recordset.length > 0) {
 
-				//VALIDATE DEPOSIT VALUE
+				// VALIDATE DEPOSIT VALUE
 				let regexp = new RegExp('^(?:[1-9]|[1-9][0-9]+)$');
 				if(!regexp.test(DEPOSIT_AMOUNT)) {
 					console.log('VALIDATE DEPOSIT VALUE');
 					sql.close();
-					return res.status(400).send(CNST_ERROR_CODE.error_2);
+					return res.status(200).send(CNST_ERROR_CODE.error_2);
 				}
 
 				const transaction = pool.transaction();
 
 				transaction.begin(async err => {
+
 					transaction.on('rollback', aborted => {
-						console.log('ABORTED');
 						sql.close();
-						return res.status(400).send(CNST_ERROR_CODE.error_11);
+						return res.status(200).send(CNST_ERROR_CODE.error_11);
 					});
 					transaction.on('commit', () => {
-						console.log('COMMITTED');
 						sql.close();
 						return res.status(200).send(CNST_ERROR_CODE.error_0);
 					});
@@ -1763,30 +1885,31 @@ app.post('/api/deposit', async (req,res) => {
 					SQL = "UPDATE [TBL_URIAGE] SET MAEUKE_YEN = @DEPOSIT_AMOUNT WHERE [SALES_NO] = @SALES_NO AND [MEMBER_ID] = @MEMBER_ID;";
 					transaction.request()
 					.input('DEPOSIT_AMOUNT', sql.Int, DEPOSIT_AMOUNT)
-					.input('SALES_NO', sql.VarChar(12), SALES_NO)
-					.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
+					.input('SALES_NO', sql.VarChar, SALES_NO)
+					.input('MEMBER_ID', sql.VarChar, MEMBER_ID)
 					.query(SQL,async(err,result) => {
 						if(err) return transaction.rollback();
+						// transaction.commit();
 
 						let GET_TBL_URIAGE = await pool.request()
-						.input('SALES_NO', sql.VarChar(12), SALES_NO)
+						.input('SALES_NO', sql.VarChar, SALES_NO)
 						.query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
 
 						let TBL_GATE_SEQ = await pool.request()
-						.input('SEAT_NO', sql.VarChar(12), GET_TBL_URIAGE.recordset[0].SEAT_NO)
+						.input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
 						.query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
 
 						// UPDATE TBL_GATE
 						transaction.request()
 						.input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
-						.input('SEQ', sql.Int, TBL_GATE_SEQ.recordset[0].SEQ)
+						.input('SEQ', sql.VarChar, TBL_GATE_SEQ.recordset[0].SEQ)
 						.query("UPDATE TBL_GATE SET LOGIN_FLG = 3, OPEN_FLG = 0 WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ;",async(err,result) => {
 							if(err) return transaction.rollback();
 							// INSERT AWAY SHOP
 							transaction.request()
-							.input('SALES_NO', sql.VarChar(12), SALES_NO)
-							.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
-							.input('AWAY_TIME', sql.DateTime2(0), AWAY_TIME)
+							.input('SALES_NO', sql.VarChar, SALES_NO)
+							.input('MEMBER_ID', sql.VarChar, MEMBER_ID)
+							.input('AWAY_TIME', sql.VarChar, AWAY_TIME)
 							.query("INSERT INTO TBL_AWAY_SHOP (SALES_NO,MEMBER_ID,AWAY_TIME) VALUES(@SALES_NO,@MEMBER_ID,@AWAY_TIME)",async(err,result) => {
 								if(err) return transaction.rollback();
 								transaction.commit();
@@ -1798,23 +1921,46 @@ app.post('/api/deposit', async (req,res) => {
 	
 				});
 
+				// let GET_TBL_URIAGE = await pool.request()
+				// .input('SALES_NO', sql.VarChar, SALES_NO)
+				// .query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
+
+				// let TBL_GATE_SEQ = await pool.request()
+				// .input('SEAT_NO', sql.VarChar, SALES_NO)
+				// .query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
+
+				// // UPDATE TBL_GATE
+				// let UPDATE_TBL_GATE = await pool.request()
+				// .input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
+				// .input('SEQ', sql.VarChar, TBL_GATE_SEQ.recordset[0].SEQ)
+				// .query("UPDATE TBL_GATE SET LOGIN_FLG = 3, OPEN_FLG = 0 WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ;");
+
+				// // INSERT AWAY SHOP
+				// let INSERT_TBL_AWAY_SHOP = await pool.request()
+				// .input('SALES_NO', sql.VarChar, SALES_NO)
+				// .input('MEMBER_ID', sql.VarChar, MEMBER_ID)
+				// .input('AWAY_TIME', sql.VarChar, AWAY_TIME)
+				// .query("INSERT INTO TBL_AWAY_SHOP (SALES_NO,MEMBER_ID,AWAY_TIME) VALUES(@SALES_NO,@MEMBER_ID,@AWAY_TIME)");
+
 			} else {
 				console.log('TBL_URIAGE no data');
 				sql.close();
-				return res.status(400).send(CNST_ERROR_CODE.error_2);
+				return res.status(200).send(CNST_ERROR_CODE.error_2);
 			}
 
 		})
 		.catch((err) => {
 			console.log('API-DEPOSIT post validation\n'+err);
 			sql.close();
-			return res.status(400).send(CNST_ERROR_CODE.error_3);
+			return res.status(200).send(CNST_ERROR_CODE.error_3);
+			// sendError(CNST_ERROR_CODE.error_3,'deposit: '+err,res);
 		});
 
 	} catch(err) {
 		console.log('API-DEPOST\n'+err);
 		sql.close();
-		return res.status(400).send(CNST_ERROR_CODE.error_11);
+		return res.status(200).send(CNST_ERROR_CODE.error_11);
+		// sendError(CNST_ERROR_CODE.error_11,'API-DEPOSIT\n'+err,res);
 	}
 
 });
@@ -3560,7 +3706,7 @@ app.post('/api/coupon_search', async (req,res) => {
 				let { code } = body;
 
 				let errorCode = {
-					1: () => { 
+					1: () => {
 						for(let i in body.coupon) {
 							if(!body.coupon[i].coupon_price) {
 								body.coupon[i]['coupon_type'] = 1;
@@ -3568,11 +3714,12 @@ app.post('/api/coupon_search', async (req,res) => {
 								body.coupon[i]['coupon_type'] = 0;
 							}
 						}
-						return body.coupon;
+						return body.coupon; 
 					},
 					2: () => { return CNST_ERROR_CODE.error_3; },
 					3: () => { return CNST_ERROR_CODE.error_2; },
 					4: () => { return CNST_ERROR_CODE.error_4; },
+					6: () => { return CNST_ERROR_CODE.error_6; },
 					'default': () => { return CNST_ERROR_CODE.error_11; }
 				};
 				if(errorCode[body.code]() !== 'undefined') {
@@ -3752,27 +3899,6 @@ function MONITOR_LOG(status, logMsg, data, res, connection = false) {
 	console.log(logMsg);
 	if(connection) sql.close();
 	return res.status(status).json(data);
-}
-
-function REQUEST_LOG(req) {
-	const dateTime = new Date();
-	const toLocaleTimeString = dateTime.toLocaleTimeString();
-	const toLocaleDateString = dateTime.toLocaleDateString();
-	if(!fs.existsSync(logFile)) {
-		fs.mkdirSync(logFile,'0444');
-	}
-	let log_json = {
-		request_url:req.url,
-		request_method:req.method,
-		request_data:req.body,
-		original_url:req.originalUrl
-	};
-	
-	let txt = `${toLocaleTimeString}: ${JSON.stringify(log_json)}\r\n`;
-	fs.appendFile(`${logFile}/${toLocaleDateString}.txt`, txt, (err) => {
-		if(err) return err;
-		return true;
-	});
 }
 
 app.listen(3001, () => console.log('Example app listening on port 3001!'));
