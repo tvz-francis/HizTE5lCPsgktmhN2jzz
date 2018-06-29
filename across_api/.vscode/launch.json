@@ -14,8 +14,7 @@
             "type": "node",
             "request": "launch",
             "name": "Launch Program",
-            "program": "${workspaceFolder}\\apps/app1.js",
-            "port":5000
+            "program": "${workspaceFolder}\\apps/app1.js"
         }
     ]
 }

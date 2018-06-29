@@ -2,6 +2,8 @@ const express = require('express');
 const app = express();
 const bodyParser = require('body-parser');
 const sql = require('mssql');
+const crypto = require('crypto');
+const fs = require('fs');
 // const mysql = require('mysql');
 // const dateFormat = require('dateformat');
 // const querystring = require('querystring');
@@ -31,6 +33,7 @@ let userPassValidation = function(req,res,next) {
 	if(req.method != 'POST') res.end();
 	try{
 		if(req.body.username == CNST_USERNAME && req.body.password == CNST_PASSWORD) {
+			REQUEST_LOG('LOGGED');
 			next();
 		} else {
 			throw 'Username and Password authentication failed.';
@@ -50,6 +53,7 @@ const config = {
 	server:'192.168.128.121\\sqlexpress',
 	database:'APITestDB'
 };
+const logFile = __dirname+'/logs';
 
 //#region API-SALES
 app.post('/api/sales', async (req, res) => {
@@ -78,7 +82,7 @@ app.post('/api/sales', async (req, res) => {
 	// POST DATE / END DATE
 	let SEISAN_DATE = dateTimeNow();
 
-	let TBL_URIAGE_DTL_CLASS = [];
+	// let TBL_URIAGE_DTL_CLASS = [];
 	let username = param.username;
 	let password = param.password;
 	let seat_no = param.seat_no;
@@ -92,9 +96,10 @@ app.post('/api/sales', async (req, res) => {
 
 	let _uriage = '';
 	let autoPackClass = [];
-	let uriageDtlToToken = [];
+	// let uriageDtlToToken = [];
 	let tempUriageDtl = {};
 	let total_price = 0;
+	let all_tax = 0;
 
 	let MST_SHOP = await pool.request()
 	.query("SELECT * FROM MST_SHOP;");
@@ -141,12 +146,15 @@ app.post('/api/sales', async (req, res) => {
 		if(result1.recordset.length > 0) {
 			for(let i in result1.recordset) {
 				let obj = result1.recordset[i];
-					member_flg = obj.MEMBER_FLG;
+				member_flg = obj.MEMBER_FLG;
 				_uriage = obj;
+				total_price = total_price - obj.MAEUKE_YEN;
 				let GETEXT_AUTOPACK_HT = await GET_EXT_AUTOPACK_HT(await TBL_URIAGE_DTL(obj.SALES_NO),obj);
+				let __COMPUTE = await COMPUTE_TOTAL_YEN(GETEXT_AUTOPACK_HT,obj);
+				all_tax = all_tax += __COMPUTE.TaxYen;
 				for(let x in GETEXT_AUTOPACK_HT) {
 					let xObj = GETEXT_AUTOPACK_HT[x];
-					ungroupedTblUriageDtlTemp.push(xObj);
+					total_price += xObj.TOTAL_YEN;
 				}
 
 				let tblUriageData = {
@@ -161,36 +169,38 @@ app.post('/api/sales', async (req, res) => {
 					"MAEUKE_YEN":obj.MAEUKE_YEN,
 					"SEAT_NO":obj.SEAT_NO,
 					"UPDATE_STAFF_ID":CNST_STAFF_ID,
-					"SHOUKEI_YEN":0,
-					"GOUKEI_YEN":0,
-					"URIAGE_YEN":0,
-					"TAX_YEN":0,
+					"SHOUKEI_YEN":__COMPUTE.SyoukeiYen,
+					"GOUKEI_YEN":__COMPUTE.GoukeiYen,
+					"URIAGE_YEN":__COMPUTE.UriageYen,
+					"TAX_YEN":__COMPUTE.TaxYen,
 					"AZUKARI_YEN":0,
 					"CHANGE_YEN":0
 				}
 
 				return_json.SALES_DATA.push({
 					"TBL_URIAGE":tblUriageData,
-					"TBL_URIAGE_DTL":[],
+					"TBL_URIAGE_DTL":GETEXT_AUTOPACK_HT,
 					"TBL_SEAT_STATUS":await TBL_SEAT_STATUS(obj.SALES_NO),
 					"MST_SEAT":await MST_SEAT(obj.SEAT_NO)
 				});
 				
 			}
 
-			let groupedSalesNo = await GROUPED_SALES_NO(ungroupedTblUriageDtlTemp);
-			let groupedItem = await GROUPED_ITEM(groupedSalesNo);
+			// let groupedSalesNo = await GROUPED_SALES_NO(ungroupedTblUriageDtlTemp);
+			// let groupedItem = await GROUPED_ITEM(groupedSalesNo);
 			return_json.ALL_TOTAL = total_price;
-			return_json.ALL_TAX = await compute_TAX_YEN(total_price);
+			return_json.ALL_TAX = all_tax;
 		}
+		sql.close();
+		return res.status(200).json(return_json);
 
 		for(let ii in return_json.SALES_DATA) {
 			let OBJO = return_json.SALES_DATA[ii];
 			let __COMPUTE = await COMPUTE_TOTAL_YEN(OBJO.TBL_URIAGE_DTL,OBJO.TBL_URIAGE);
 		}
-		const logMsg = `API-SALES: Success request`;
-		const data = return_json;
-		MONITOR_LOG(200,logMsg,data,res,true);
+		// const logMsg = `API-SALES: Success request`;
+		// const data = return_json;
+		// MONITOR_LOG(200,logMsg,data,res,true);
 	} catch(err) {
 		sendError(CNST_ERROR_CODE.error_11,'get tbl uriage\n'+err);
 	}
@@ -222,8 +232,14 @@ app.post('/api/sales', async (req, res) => {
 						for(let y in iObj) {
 							let yObj = iObj[y];
 							if(x != y && xObj.ITEM_ID == yObj.ITEM_ID && xObj.ITEM_KBN == yObj.ITEM_KBN && xObj.ITEM_NM == yObj.ITEM_NM && xObj.ITEM_PRICE == yObj.ITEM_PRICE && xObj.SALES_NO == yObj.SALES_NO) {
-								xObj.ITEM_QU += yObj.ITEM_QU;
-								xObj.TOTAL_YEN += yObj.TOTAL_YEN;
+								// xObj.ITEM_QU += yObj.ITEM_QU;
+								// xObj.TOTAL_YEN += yObj.TOTAL_YEN;
+								if(xObj.ITEM_KBN === 0) {
+									xObj.ITEM_QU = 1;
+								} else {
+									xObj.ITEM_QU += yObj.ITEM_QU;
+									xObj.TOTAL_YEN += yObj.TOTAL_YEN;
+								}
 								iObj.splice(y,1,'undefined');
 							}
 						}
@@ -242,8 +258,6 @@ app.post('/api/sales', async (req, res) => {
 				}
 				
 			}
-
-
 
 		} catch(err) {
 			sendError(0,'GROUPED_ITEM: '+err);
@@ -302,6 +316,7 @@ app.post('/api/sales', async (req, res) => {
 
 		let endDate = SEISAN_DATE;
 		let index = 0;
+		let UDTL = [];
 		
 		try {
 			for(let i in data) {
@@ -350,7 +365,7 @@ app.post('/api/sales', async (req, res) => {
 						//Fix Extension Name
 						let exItemNameFix = (getSEQ == 0)?obj.EX_ITEM_NM:obj.EX_ITEM_NM+'('+getSEQ+')';
 
-						uriageDtlToToken.push({
+						UDTL.push({
 							'SALES_NO':uriage.SALES_NO,
 							'SEQ':itemSequence,
 							'SEAT_NO':uriage.SEAT_NO,
@@ -372,7 +387,7 @@ app.post('/api/sales', async (req, res) => {
 					}
 					index++;
 				} while(exCurrentDate < endDate);
-				return uriageDtlToToken;
+				return UDTL;
 			}
 		} catch(err) {
 			sendError(0,'ExCurrentDate: '+err);
@@ -562,16 +577,16 @@ app.post('/api/sales', async (req, res) => {
 	async function GET_EXT_AUTOPACK_HT(data,uriage) {
 		let _data = data;
 		let _ExCurrentDate;
-		let _tbl_uriage_class = {};
+		let _tbl_uriage_class = [];
 		let SEQ = 0;
 		try	{
 			let item = [];
 			for(let i in _data) {
 				let obj = _data[i];
 
-				if(obj.ITEM_KBN > 1) {
+				if(obj.ITEM_KBN !== 0) {
 					SEQ = (obj.SEQ == null)?SEQ:obj.SEQ;
-					TBL_URIAGE_DTL_CLASS.push({
+					_tbl_uriage_class.push({
 						BASE_MIN:obj.BASE_MIN,
 						DELETE_FLG:obj.DELETE_FLG,
 						FOOD_KBN:obj.FOOD_KBN,
@@ -581,7 +596,7 @@ app.post('/api/sales', async (req, res) => {
 						ITEM_KBN:obj.ITEM_KBN,
 						ITEM_NM:obj.ITEM_NM,
 						ITEM_PRICE:obj.ITEM_PRICE,
-						ITEM_QU:obj.ITEM_QU,
+						ITEM_QU:1,
 						ITEM_SEQ:obj.ITEM_SEQ,
 						MAEBARAI_FLG:obj.MAEBARAI_FLG,
 						RETURN_QU:0,
@@ -596,7 +611,7 @@ app.post('/api/sales', async (req, res) => {
 						// UPDATE_DATE:obj.UPDATE_DATE,
 						UPDATE_STAFF_ID:CNST_STAFF_ID
 					});
-					total_price += parseInt(obj.TOTAL_YEN);
+					// total_price += parseInt(obj.TOTAL_YEN);
 					SEQ++;
 				} else {
 
@@ -609,7 +624,7 @@ app.post('/api/sales', async (req, res) => {
 						let obj2 = query.recordset[i2];
 						if(obj2.AUTO_PACK_ID != null) {
 							let autoPack = await AUTO_PACK(obj2.ITEM_ID,obj2.SEAT_USE_START_DATE,SEISAN_DATE,_uriage.MEMBER_FLG,obj2.ITEM_SEQ);
-								TBL_URIAGE_DTL_CLASS.push({
+								_tbl_uriage_class.push({
 									BASE_MIN:autoPack.BASE_MIN,
 									DELETE_FLG:obj.DELETE_FLG,
 									FOOD_KBN:null,
@@ -634,7 +649,7 @@ app.post('/api/sales', async (req, res) => {
 									// UPDATE_DATE:obj.UPDATE_DATE,
 									UPDATE_STAFF_ID:CNST_STAFF_ID
 								});
-								total_price += parseInt(obj.TOTAL_YEN);
+								// total_price += parseInt(obj.TOTAL_YEN);
 								SEQ++;
 								
 								obj2.ITEM_ID = autoPack.ITEM_ID;
@@ -646,7 +661,7 @@ app.post('/api/sales', async (req, res) => {
 								obj2.PACK_END_TIME = autoPack.PACK_END_TIME;
 								obj2.ITEM_SEQ = autoPack.ITEM_SEQ;
 						} else {
-							TBL_URIAGE_DTL_CLASS.push({
+							_tbl_uriage_class.push({
 								BASE_MIN:obj2.EX_BASE_MIN,
 								DELETE_FLG:obj.DELETE_FLG,
 								FOOD_KBN:null,
@@ -671,7 +686,7 @@ app.post('/api/sales', async (req, res) => {
 								// UPDATE_DATE:obj.UPDATE_DATE,
 								UPDATE_STAFF_ID:CNST_STAFF_ID
 							});
-							total_price += parseInt(obj.TOTAL_YEN);
+							// total_price += parseInt(obj.TOTAL_YEN);
 							SEQ++;
 						}
 
@@ -680,7 +695,7 @@ app.post('/api/sales', async (req, res) => {
 						for(let ex in _ExCurrentDate) {
 							let exobj = _ExCurrentDate[ex];
 
-							TBL_URIAGE_DTL_CLASS.push({
+							_tbl_uriage_class.push({
 								BASE_MIN:exobj.BASE_MIN,
 								DELETE_FLG:obj.DELETE_FLG,
 								FOOD_KBN:null,
@@ -705,7 +720,7 @@ app.post('/api/sales', async (req, res) => {
 								// UPDATE_DATE:obj.UPDATE_DATE,
 								UPDATE_STAFF_ID:CNST_STAFF_ID
 							});
-							total_price += parseInt(exobj.TOTAL_YEN);
+							// total_price += parseInt(exobj.TOTAL_YEN);
 							SEQ++;
 						}
 					}
@@ -717,7 +732,7 @@ app.post('/api/sales', async (req, res) => {
 		} catch(err) {
 			sendError(CNST_ERROR_CODE.error_11,'GET_EXT_AUTOPACK_HT\n'+err);
 		}
-		return TBL_URIAGE_DTL_CLASS;
+		return _tbl_uriage_class;
 	}
 
 	async function MERGE_URIAGE_DTL(obj,_hash) {
@@ -1300,15 +1315,20 @@ app.post('/api/sales', async (req, res) => {
 	}
 
 	async function TAX_RATE(date) {
+		let SQL = "";
+		let result = 0;
 		try{
+			SQL = "";
 			let query = await pool.request()
-			.query("SELECT TOP(1) CONVERT(char(10), [MST_TAX].[START_DATE],120) AS [START_DATE], [TAX_RATE] FROM [MST_TAX] ORDER BY [START_DATE] DESC;");
+			.input('TAXDATE',sql.Date,date)
+			.query("SELECT TOP 1 ISNULL(TAX_RATE,0) AS TAX_RATE FROM MST_TAX WHERE START_DATE < CONVERT(char(8), @TAXDATE ,112)");
 			let data = query.recordset[0];
-			if(date <= data.START_DATE) {
-				result = data.TAX_RATE;
-			} else {
-				result = 0;
-			}
+			result = data.TAX_RATE;
+			// if(date <= data.START_DATE) {
+			// 	result = data.TAX_RATE;
+			// } else {
+			// 	result = 0;
+			// }
 			return result;
 		} catch(err) {
 			console.log(err);
@@ -1511,6 +1531,10 @@ app.post('/api/sales', async (req, res) => {
 	
 				if(taxKbn == 0) {
 					result = Math.floor(price / (100 + taxRate) * taxRate);
+				} else {
+					//continue
+					// result = Convert.ToInt32(Math.Truncate((Price * (TaxRate / (decimal)100))));
+					result = Math.floor(price * (taxRate / 100));
 				}
 	
 			} catch(err) {
@@ -1688,9 +1712,9 @@ app.post('/api/init', async (req,res) => {
 app.post('/api/deposit', async (req,res) => {
 
 	let SQL = '';
-	let pool = await sql.connect(config);
 
 	try {
+		
 
 		let postDataRules = {
 			"SALES_NO":"Required Sales no", 
@@ -1701,84 +1725,68 @@ app.post('/api/deposit', async (req,res) => {
 		
 		postValidation(postDataRules,req.body)
 		.then(async(result) => {
-			
-			let SALES_NO = req.body.SALES_NO;
-			let MEMBER_ID = req.body.MEMBER_ID;
-			let DEPOSIT_AMOUNT = req.body.DEPOSIT_AMOUNT;
-			let AWAY_TIME = req.body.AWAY_TIME;
+			let pool = await sql.connect(config);
 
-			// let GET_TBL_URIAGE = await pool.request()
-			// .input('SALES_NO', sql.VarChar, SALES_NO)
-			// .query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
-
-			// let TBL_GATE_SEQ = await pool.request()
-			// .input('SEAT_NO', sql.VarChar, SALES_NO)
-			// .query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
-
-			// console.log(TBL_GATE_SEQ);
-			// return res.end();
+			let { SALES_NO,MEMBER_ID,DEPOSIT_AMOUNT,AWAY_TIME } = req.body;
 
 			// VALIDATE SALES NO AND MEMBER ID
 			SQL = "SELECT * FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO AND MEMBER_ID = @MEMBER_ID";
 			let VALIDATE_SALES_NO = await pool.request()
-			.input('SALES_NO', sql.VarChar,SALES_NO)
-			.input('MEMBER_ID', sql.VarChar,MEMBER_ID)
+			.input('SALES_NO', sql.VarChar(12),SALES_NO)
+			.input('MEMBER_ID', sql.VarChar(12),MEMBER_ID)
 			.query(SQL);
 
 			if(VALIDATE_SALES_NO.recordset.length > 0) {
 
-				// VALIDATE DEPOSIT VALUE
+				//VALIDATE DEPOSIT VALUE
 				let regexp = new RegExp('^(?:[1-9]|[1-9][0-9]+)$');
 				if(!regexp.test(DEPOSIT_AMOUNT)) {
 					console.log('VALIDATE DEPOSIT VALUE');
 					sql.close();
-					return res.status(200).send(CNST_ERROR_CODE.error_2);
+					return res.status(400).send(CNST_ERROR_CODE.error_2);
 				}
 
 				const transaction = pool.transaction();
 
 				transaction.begin(async err => {
-
 					transaction.on('rollback', aborted => {
+						console.log('ABORTED');
 						sql.close();
-						return res.status(200).send(CNST_ERROR_CODE.error_11);
+						return res.status(400).send(CNST_ERROR_CODE.error_11);
 					});
 					transaction.on('commit', () => {
+						console.log('COMMITTED');
 						sql.close();
-
-						
-
 						return res.status(200).send(CNST_ERROR_CODE.error_0);
 					});
 	
 					SQL = "UPDATE [TBL_URIAGE] SET MAEUKE_YEN = @DEPOSIT_AMOUNT WHERE [SALES_NO] = @SALES_NO AND [MEMBER_ID] = @MEMBER_ID;";
 					transaction.request()
 					.input('DEPOSIT_AMOUNT', sql.Int, DEPOSIT_AMOUNT)
-					.input('SALES_NO', sql.VarChar, SALES_NO)
-					.input('MEMBER_ID', sql.VarChar, MEMBER_ID)
+					.input('SALES_NO', sql.VarChar(12), SALES_NO)
+					.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
 					.query(SQL,async(err,result) => {
 						if(err) return transaction.rollback();
-						// transaction.commit();
 
 						let GET_TBL_URIAGE = await pool.request()
-						.input('SALES_NO', sql.VarChar, SALES_NO)
+						.input('SALES_NO', sql.VarChar(12), SALES_NO)
 						.query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
 
 						let TBL_GATE_SEQ = await pool.request()
-						.input('SEAT_NO', sql.VarChar, SALES_NO)
+						.input('SEAT_NO', sql.VarChar(12), GET_TBL_URIAGE.recordset[0].SEAT_NO)
 						.query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
 
 						// UPDATE TBL_GATE
 						transaction.request()
 						.input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
-						.input('SEQ', sql.VarChar, TBL_GATE_SEQ.recordset[0].SEQ)
+						.input('SEQ', sql.Int, TBL_GATE_SEQ.recordset[0].SEQ)
 						.query("UPDATE TBL_GATE SET LOGIN_FLG = 3, OPEN_FLG = 0 WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ;",async(err,result) => {
 							if(err) return transaction.rollback();
 							// INSERT AWAY SHOP
 							transaction.request()
-							.input('SALES_NO', sql.VarChar, SALES_NO)
-							.input('MEMBER_ID', sql.VarChar, MEMBER_ID)
-							.input('AWAY_TIME', sql.VarChar, AWAY_TIME)
+							.input('SALES_NO', sql.VarChar(12), SALES_NO)
+							.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
+							.input('AWAY_TIME', sql.DateTime2(0), AWAY_TIME)
 							.query("INSERT INTO TBL_AWAY_SHOP (SALES_NO,MEMBER_ID,AWAY_TIME) VALUES(@SALES_NO,@MEMBER_ID,@AWAY_TIME)",async(err,result) => {
 								if(err) return transaction.rollback();
 								transaction.commit();
@@ -1790,46 +1798,23 @@ app.post('/api/deposit', async (req,res) => {
 	
 				});
 
-				// let GET_TBL_URIAGE = await pool.request()
-				// .input('SALES_NO', sql.VarChar, SALES_NO)
-				// .query("SELECT SEAT_NO FROM TBL_URIAGE WHERE SALES_NO = @SALES_NO;");
-
-				// let TBL_GATE_SEQ = await pool.request()
-				// .input('SEAT_NO', sql.VarChar, SALES_NO)
-				// .query("SELECT TOP 1 SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 ORDER BY SEQ DESC;");
-
-				// // UPDATE TBL_GATE
-				// let UPDATE_TBL_GATE = await pool.request()
-				// .input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
-				// .input('SEQ', sql.VarChar, TBL_GATE_SEQ.recordset[0].SEQ)
-				// .query("UPDATE TBL_GATE SET LOGIN_FLG = 3, OPEN_FLG = 0 WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ;");
-
-				// // INSERT AWAY SHOP
-				// let INSERT_TBL_AWAY_SHOP = await pool.request()
-				// .input('SALES_NO', sql.VarChar, SALES_NO)
-				// .input('MEMBER_ID', sql.VarChar, MEMBER_ID)
-				// .input('AWAY_TIME', sql.VarChar, AWAY_TIME)
-				// .query("INSERT INTO TBL_AWAY_SHOP (SALES_NO,MEMBER_ID,AWAY_TIME) VALUES(@SALES_NO,@MEMBER_ID,@AWAY_TIME)");
-
 			} else {
 				console.log('TBL_URIAGE no data');
 				sql.close();
-				return res.status(200).send(CNST_ERROR_CODE.error_2);
+				return res.status(400).send(CNST_ERROR_CODE.error_2);
 			}
 
 		})
 		.catch((err) => {
 			console.log('API-DEPOSIT post validation\n'+err);
 			sql.close();
-			return res.status(200).send(CNST_ERROR_CODE.error_3);
-			// sendError(CNST_ERROR_CODE.error_3,'deposit: '+err,res);
+			return res.status(400).send(CNST_ERROR_CODE.error_3);
 		});
 
 	} catch(err) {
 		console.log('API-DEPOST\n'+err);
 		sql.close();
-		return res.status(200).send(CNST_ERROR_CODE.error_11);
-		// sendError(CNST_ERROR_CODE.error_11,'API-DEPOSIT\n'+err,res);
+		return res.status(400).send(CNST_ERROR_CODE.error_11);
 	}
 
 });
@@ -2221,37 +2206,14 @@ app.post('/api/paid', async (req,res) => {
 	
 				let GET_TBL_URIAGE = await TBL_URIAGE(JSON_TBL_URIAGE.SEAT_NO,JSON_TBL_URIAGE.SALES_NO);
 				GET_TBL_URIAGE = GET_TBL_URIAGE[0];
-	
-				// let GET_TOKEN_URIAGE_DTL_TEMP = await TOKEN_URIAGE_DTL_TEMP(uriageDtlObj.TOKEN_ID,iSalesDataObj.SALES_NO);
-	
-				// let GET_COMPUTE_TOTAL_YEN = await COMPUTE_TOTAL_YEN(GET_TOKEN_URIAGE_DTL_TEMP,GET_TBL_URIAGE);
-	
-				// GET_TBL_URIAGE_USE_MIN = await SEAT_ITEM_USE_MIN(GET_TBL_URIAGE.SALES_NO,seisanDate);
-	
-				// GET_TBL_URIAGE.USE_MIN = GET_TBL_URIAGE_USE_MIN;
 				
 				let UPDATE_TBL_URIAGE = await pool.request()
-				/* .input('SALES_NO', sql.VarChar(12), GET_TBL_URIAGE.SALES_NO)
-				.input('SEISAN_DATE', sql.DateTime2(0), seisanDate)
-				.input('USE_MIN', sql.Int, GET_TBL_URIAGE.USE_MIN)
-				.input('SHOUKEI_YEN', sql.Int, GET_TBL_URIAGE.SHOUKEI_YEN)
-				.input('GOUKEI_YEN', sql.Int, GET_TBL_URIAGE.GOUKEI_YEN)
-				.input('MAEUKE_YEN', sql.Int, GET_TBL_URIAGE.MAEUKE_YEN)
-				.input('AZUKARI_YEN', sql.Int, uriageDtlObj.AZUKARI_YEN)
-				.input('CHANGE_YEN', sql.Int, GET_COMPUTE_TOTAL_YEN.ChangeYen)
-				.input('USE_POINT', sql.Int, GET_TBL_URIAGE.USE_POINT)
-				.input('URIAGE_YEN', sql.Int, GET_TBL_URIAGE.URIAGE_YEN)
-				.input('SEISAN_FLG', sql.TinyInt, 1)
-				.input('ADD_POINT', sql.Int, GET_TBL_URIAGE.ADD_POINT)
-				.input('TAX_YEN', sql.Int, GET_TBL_URIAGE.TAX_YEN)
-				.input('SEAT_NO', sql.VarChar(4), GET_TBL_URIAGE.SEAT_NO)
-				.input('UPDATE_STAFF_ID', sql.VarChar(20), CNST_STAFF_ID) */
 				.input('SALES_NO', sql.VarChar(12), JSON_TBL_URIAGE.SALES_NO)
-				.input('SEISAN_DATE', sql.DateTime2(0), SEISAN_DATE)
-				.input('USE_MIN', sql.Int, GET_TBL_URIAGE.USE_MIN)
+				.input('SEISAN_DATE', sql.DateTime2(0), GET_TBL_URIAGE.SEISAN_DATE)
+				.input('USE_MIN', sql.Int, JSON_TBL_URIAGE.USE_MIN)
 				.input('SHOUKEI_YEN', sql.Int, JSON_TBL_URIAGE.SHOUKEI_YEN)
 				.input('GOUKEI_YEN', sql.Int, JSON_TBL_URIAGE.GOUKEI_YEN)
-				.input('MAEUKE_YEN', sql.Int, GET_TBL_URIAGE.MAEUKE_YEN)
+				.input('MAEUKE_YEN', sql.Int, JSON_TBL_URIAGE.MAEUKE_YEN)
 				.input('AZUKARI_YEN', sql.Int, JSON_TBL_URIAGE.AZUKARI_YEN)
 				.input('CHANGE_YEN', sql.Int, JSON_TBL_URIAGE.CHANGE_YEN)
 				.input('USE_POINT', sql.Int, GET_TBL_URIAGE.USE_POINT)
@@ -2287,7 +2249,7 @@ app.post('/api/paid', async (req,res) => {
 						.input('TOTAL_YEN', sql.VarChar, jsonUriageDtl.TOTAL_YEN)
 						.input('BASE_MIN', sql.VarChar, jsonUriageDtl.BASE_MIN)
 						.input('ITEM_KBN', sql.VarChar, jsonUriageDtl.ITEM_KBN)
-						.input('SEISAN_DATE', sql.DateTime2(0), SEISAN_DATE)
+						.input('SEISAN_DATE', sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
 						.input('SEISAN_FLG', sql.VarChar, 1)
 						.input('DELETE_FLG', sql.VarChar, jsonUriageDtl.DELETE_FLG)
 						.input('UPDATE_STAFF_ID', sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
@@ -2298,7 +2260,7 @@ app.post('/api/paid', async (req,res) => {
 						.input('SALES_NO', sql.VarChar, jsonUriageDtl.SALES_NO)
 						.input('ITEM_ID', sql.VarChar, jsonUriageDtl.ITEM_ID)
 						.input('SEQ', sql.VarChar, jsonUriageDtl.SEQ)
-						.input('SEISAN_DATE', sql.DateTime2(0), SEISAN_DATE)
+						.input('SEISAN_DATE', sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
 						.input('SEISAN_FLG', sql.VarChar, 1)
 						.input('DELETE_FLG', sql.VarChar, jsonUriageDtl.DELETE_FLG)
 						.input('UPDATE_STAFF_ID', sql.VarChar, CNST_STAFF_ID)
@@ -2322,7 +2284,7 @@ app.post('/api/paid', async (req,res) => {
 						.input("ITEM_QU", sql.VarChar, jsonUriageDtl.ITEM_QU)
 						.input("ITEM_PRICE", sql.VarChar, jsonUriageDtl.ITEM_PRICE)
 						.input("TOTAL_YEN", sql.VarChar, jsonUriageDtl.TOTAL_YEN)
-						.input("SEISAN_DATE", sql.DateTime2(0), SEISAN_DATE)
+						.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
 						.input("SEISAN_FLG", sql.VarChar, 1)
 						.input("MAEBARAI_FLG", sql.VarChar, jsonUriageDtl.MAEBARAI_FLG)
 						.input("DELETE_FLG", sql.VarChar, jsonUriageDtl.DELETE_FLG)
@@ -2379,7 +2341,7 @@ app.post('/api/paid', async (req,res) => {
 
 				let UPDATE_MST_SEAT_STATUS = await pool.request()
 				.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
-				.input("SEISAN_DATE", sql.DateTime2(0), SEISAN_DATE)
+				.input("SEISAN_DATE", sql.DateTime2(0), GET_TBL_URIAGE.SEISAN_DATE)
 				.input("SEISAN_FLG", sql.Int, 1) //jsonUriageDtl.SEISAN_FLG
 				.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
 				.query(SQL);
@@ -2388,7 +2350,7 @@ app.post('/api/paid', async (req,res) => {
 				SQL = "UPDATE TBL_CREDIT_RIREKI SET SEISAN_FLG = @SEISAN_FLG, SEISAN_DATE = @SEISAN_DATE , UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
 				let UPDATE_TBL_CREDIT_RIREKI = await pool.request()
 				.input("SEISAN_FLG", sql.Int, 1)
-				.input("SEISAN_DATE", sql.DateTime2(0), SEISAN_DATE)
+				.input("SEISAN_DATE", sql.DateTime2(0), GET_TBL_URIAGE.SEISAN_DATE)
 				.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
 				.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
 				.query(SQL);
@@ -2439,24 +2401,6 @@ app.post('/api/paid', async (req,res) => {
 
 				}
 				let _UPDATE_TBL_GATE = await UPDATE_TBL_GATE(JSON_TBL_URIAGE.SEAT_NO,JSON_TBL_URIAGE.URIAGE_YEN,50000);
-				// }
-
-				// DELETE FROM TBL_URIAGE_DTL_TEMP
-
-				// SQL = "DELETE FROM TBL_URIAGE_DTL_TEMP WHERE TOKEN_ID = @TOKEN_ID AND SALES_NO = @SALES_NO";
-				// let DELETE_UDTL_TEMP = await pool.request()
-				// .input('TOKEN_ID', sql.VarChar, reqParam.TOKEN_ID)
-				// .input('SALES_NO', sql.VarChar, iSalesDataObj.SALES_NO)
-				// .query(SQL);
-
-				// _UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(reqParam.SEAT_NO,3,CNST_STAFF_ID);
-	
-				// if(GET_TOKEN_URIAGE_DTL_TEMP) {
-	
-				// } else {
-				// 	ERROR_LOGGER(0,'No Record found in TBL_URIAGE_DTL_TEMP.');
-				// 	closeConnection();
-				// }
 	
 			}
 			let seatStatus = 0;
@@ -2479,9 +2423,6 @@ app.post('/api/paid', async (req,res) => {
 				}
 			}
 			_UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(SEAT_NO,seatStatus,CNST_STAFF_ID);
-			// let UDS = await UPLOAD_DATA_SALES(uriageDtlObj.SALES_DATA);
-			// console.log(UDS);
-			// closeConnection();
 		} catch (err) {
 			console.log('SINGLE_SALES_NO\n'+err);
 			sql.close();
@@ -2807,20 +2748,6 @@ app.post('/api/paid', async (req,res) => {
 				let GET_TBL_URIAGE = await TBL_URIAGE(JSON_TBL_URIAGE.SEAT_NO,JSON_TBL_URIAGE.SALES_NO);
 				GET_TBL_URIAGE = GET_TBL_URIAGE[0];
 
-				// GET SEISAN_DATE
-				// for(let i in JSON_TBL_URIAGE_DTL) {
-				// 	if(JSON_TBL_URIAGE_DTL[i].SALES_NO == JSON_TBL_URIAGE.SALES_NO) {
-				// 		seisanDate = JSON_TBL_URIAGE_DTL[i].SEISAN_DATE;
-				// 		break;
-				// 	}
-				// }
-	
-				// GET_TBL_URIAGE_USE_MIN = await SEAT_ITEM_USE_MIN(GET_TBL_URIAGE.SALES_NO,seisanDate);
-	
-				// GET_TBL_URIAGE.USE_MIN = GET_TBL_URIAGE_USE_MIN;
-	
-				// console.log(GET_COMPUTE_TOTAL_YEN);
-				// console.log(GET_TBL_URIAGE);
 				totalDiscountYen = 0;
 				totalYen = 0;
 
@@ -2832,7 +2759,7 @@ app.post('/api/paid', async (req,res) => {
 				
 				let UPDATE_TBL_URIAGE = await pool.request()
 				.input('SALES_NO', sql.VarChar(12), JSON_TBL_URIAGE.SALES_NO)
-				.input('SEISAN_DATE', sql.DateTime2(0), seisanDate)
+				.input('SEISAN_DATE', sql.DateTime2(0), GET_TBL_URIAGE.SEISAN_DATE)
 				.input('USE_MIN', sql.Int, JSON_TBL_URIAGE.USE_MIN)
 				.input('GOUKEI_YEN', sql.Int, JSON_TBL_URIAGE.GOUKEI_YEN)
 				.input('AZUKARI_YEN', sql.Int, JSON_TBL_URIAGE.AZUKARI_YEN)
@@ -2871,7 +2798,7 @@ app.post('/api/paid', async (req,res) => {
 						.input('TOTAL_YEN', sql.VarChar, jsonUriageDtl.TOTAL_YEN)
 						.input('BASE_MIN', sql.VarChar, jsonUriageDtl.BASE_MIN)
 						.input('ITEM_KBN', sql.VarChar, jsonUriageDtl.ITEM_KBN)
-						.input('SEISAN_DATE', sql.DateTime2(0), seisanDate)
+						.input('SEISAN_DATE', sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
 						.input('SEISAN_FLG', sql.VarChar, 1)
 						.input('DELETE_FLG', sql.VarChar, jsonUriageDtl.DELETE_FLG)
 						.input('UPDATE_STAFF_ID', sql.VarChar, CNST_STAFF_ID)
@@ -2882,7 +2809,7 @@ app.post('/api/paid', async (req,res) => {
 						.input('SALES_NO', sql.VarChar, jsonUriageDtl.SALES_NO)
 						.input('ITEM_ID', sql.VarChar, jsonUriageDtl.ITEM_ID)
 						.input('SEQ', sql.VarChar, jsonUriageDtl.SEQ)
-						.input('SEISAN_DATE', sql.DateTime2(0), seisanDate)
+						.input('SEISAN_DATE', sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
 						.input('SEISAN_FLG', sql.VarChar, 1)
 						.input('DELETE_FLG', sql.VarChar, jsonUriageDtl.DELETE_FLG)
 						.input('UPDATE_STAFF_ID', sql.VarChar, jsonUriageDtl.UPDATE_STAFF_ID)
@@ -2906,7 +2833,7 @@ app.post('/api/paid', async (req,res) => {
 						.input("ITEM_QU", sql.VarChar, jsonUriageDtl.ITEM_QU)
 						.input("ITEM_PRICE", sql.VarChar, jsonUriageDtl.ITEM_PRICE)
 						.input("TOTAL_YEN", sql.VarChar, jsonUriageDtl.TOTAL_YEN)
-						.input("SEISAN_DATE", sql.DateTime2(0), seisanDate)
+						.input("SEISAN_DATE", sql.DateTime2(0), jsonUriageDtl.SEISAN_DATE)
 						.input("SEISAN_FLG", sql.VarChar, 1)
 						.input("MAEBARAI_FLG", sql.VarChar, 0)
 						.input("DELETE_FLG", sql.VarChar, jsonUriageDtl.DELETE_FLG)
@@ -2964,7 +2891,7 @@ app.post('/api/paid', async (req,res) => {
 
 				let UPDATE_MST_SEAT_STATUS = await pool.request()
 				.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
-				.input("SEISAN_DATE", sql.DateTime2(0), seisanDate)
+				.input("SEISAN_DATE", sql.DateTime2(0), GET_TBL_URIAGE.SEISAN_DATE)
 				.input("SEISAN_FLG", sql.Int, 1)
 				.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
 				.query(SQL);
@@ -2973,7 +2900,7 @@ app.post('/api/paid', async (req,res) => {
 				SQL = "UPDATE TBL_CREDIT_RIREKI SET SEISAN_FLG = @SEISAN_FLG, SEISAN_DATE = @SEISAN_DATE , UPDATE_STAFF_ID = @UPDATE_STAFF_ID, UPDATE_DATE = GETDATE() WHERE SALES_NO = @SALES_NO";
 				let UPDATE_TBL_CREDIT_RIREKI = await pool.request()
 				.input("SEISAN_FLG", sql.Int, 1)
-				.input("SEISAN_DATE", sql.DateTime2(0), seisanDate)
+				.input("SEISAN_DATE", sql.DateTime2(0), GET_TBL_URIAGE.SEISAN_DATE)
 				.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
 				.input("SALES_NO", sql.VarChar, JSON_TBL_URIAGE.SALES_NO)
 				.query(SQL);
@@ -3587,7 +3514,7 @@ app.post('/api/coupon_search', async (req,res) => {
 			let { coupon_search } = req.body;
 
 			let coupon_rules = {
-				"pos_members":"Required pos_members",
+				"member_id":"Required pos_members",
 				"coupon_id":"Required coupon_id",
 				"shop_fc":"Required shop_fc",
 				"post_date":"Required post_date"
@@ -3633,7 +3560,16 @@ app.post('/api/coupon_search', async (req,res) => {
 				let { code } = body;
 
 				let errorCode = {
-					1: () => { return body; },
+					1: () => { 
+						for(let i in body.coupon) {
+							if(!body.coupon[i].coupon_price) {
+								body.coupon[i]['coupon_type'] = 1;
+							} else {
+								body.coupon[i]['coupon_type'] = 0;
+							}
+						}
+						return body.coupon;
+					},
 					2: () => { return CNST_ERROR_CODE.error_3; },
 					3: () => { return CNST_ERROR_CODE.error_2; },
 					4: () => { return CNST_ERROR_CODE.error_4; },
@@ -3731,28 +3667,32 @@ app.post('/api/cancel', async (req,res) => {
 
 app.post('/testrollback', async (req,res) => {
 
-	let SQL = '';
+	const hash = crypto.createHash('md5').update('dsa').digest("hex");
+	console.log(hash);
+	return res.status(200).end();
 
-	try {
+	// let SQL = '';
 
-		let pool = await sql.connect(config);
-		let reqParam = req.body;
+	// try {
 
-		SQL = "UPDATE TBL_URIAGE SET SEISAN_FLG = 0, SEISAN_DATE = NULL WHERE SALES_NO =@SALES_NO UPDATE TBL_URIAGE_DTL SET SEISAN_FLG = 0, SEISAN_DATE = NULL WHERE SALES_NO =@SALES_NO DELETE TBL_URIAGE_DTL where sales_no=@SALES_NO and item_kbn <> 0 UPDATE TBL_SEAT_STATUS SET SEISAN_FLG = 0, SEISAN_DATE = NULL WHERE SALES_NO =@SALES_NO UPDATE MST_SEAT SET SEAT_USE_SEQ= @SEAT_USE_SEQ, LOGIN_CNT = @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
-		let rollBack = await pool.request()
-		.input('SALES_NO', sql.NVarChar, reqParam.SALES_NO)
-		.input('SEAT_USE_SEQ', sql.Int, reqParam.SEAT_USE_SEQ)
-		.input('LOGIN_CNT', sql.Int, reqParam.LOGIN_CNT)
-		.input('SEAT_NO', sql.NVarChar, reqParam.SEAT_NO)
-		.query(SQL);
+	// 	let pool = await sql.connect(config);
+	// 	let reqParam = req.body;
 
-		console.log(rollBack);
+	// 	SQL = "UPDATE TBL_URIAGE SET SEISAN_FLG = 0, SEISAN_DATE = NULL WHERE SALES_NO =@SALES_NO UPDATE TBL_URIAGE_DTL SET SEISAN_FLG = 0, SEISAN_DATE = NULL WHERE SALES_NO =@SALES_NO DELETE TBL_URIAGE_DTL where sales_no=@SALES_NO and item_kbn <> 0 UPDATE TBL_SEAT_STATUS SET SEISAN_FLG = 0, SEISAN_DATE = NULL WHERE SALES_NO =@SALES_NO UPDATE MST_SEAT SET SEAT_USE_SEQ= @SEAT_USE_SEQ, LOGIN_CNT = @LOGIN_CNT WHERE SEAT_NO = @SEAT_NO";
+	// 	let rollBack = await pool.request()
+	// 	.input('SALES_NO', sql.NVarChar, reqParam.SALES_NO)
+	// 	.input('SEAT_USE_SEQ', sql.Int, reqParam.SEAT_USE_SEQ)
+	// 	.input('LOGIN_CNT', sql.Int, reqParam.LOGIN_CNT)
+	// 	.input('SEAT_NO', sql.NVarChar, reqParam.SEAT_NO)
+	// 	.query(SQL);
 
-	} catch(err) {
-		console.log(err);
-		sql.close();
-		return res.status(400).send(CNST_ERROR_CODE.error_11);
-	}
+	// 	console.log(rollBack);
+
+	// } catch(err) {
+	// 	console.log(err);
+	// 	sql.close();
+	// 	return res.status(400).send(CNST_ERROR_CODE.error_11);
+	// }
 
 });
 
@@ -3812,6 +3752,24 @@ function MONITOR_LOG(status, logMsg, data, res, connection = false) {
 	console.log(logMsg);
 	if(connection) sql.close();
 	return res.status(status).json(data);
+}
+
+function REQUEST_LOG(data) {
+	const dateTime = new Date();
+	const toLocaleTimeString = dateTime.toLocaleTimeString();
+	const toLocaleDateString = dateTime.toLocaleDateString();
+	if(!fs.existsSync(logFile)) {
+		fs.mkdirSync(logFile,'0444');
+	}
+	let log_json = {
+		time: toLocaleTimeString,
+		data: data
+	};
+	let txt = `${toLocaleTimeString}: data\r\n`;
+	fs.appendFile(`${logFile}/${toLocaleDateString}.txt`, txt, (err) => {
+		if(err) return err;
+		return true;
+	});
 }
 
 app.listen(3001, () => console.log('Example app listening on port 3001!'));
