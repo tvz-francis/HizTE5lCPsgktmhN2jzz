@@ -1,2 +1,0 @@
-09:05:14: {"request_url":"/api/gassan_sales_no","request_method":"POST","request_data":{"username":"admin","password":"admin123"},"original_url":"/api/gassan_sales_no"}
-09:05:20: {"request_url":"/api/gassan_sales_no","request_method":"POST","request_data":{"username":"admin","password":"admin123"},"original_url":"/api/gassan_sales_no"}
