@@ -52,7 +52,8 @@ const config = {
 	user:'sa',
 	password:'xyz0',
 	server:'192.168.128.121\\sqlexpress',
-	database:'APITestDB'
+	// database:'APITestDB'
+	database:'TestPC-APITestDB'
 };
 const logFile = __dirname+'../../../logs';
 
@@ -83,7 +84,6 @@ app.post('/api/sales', async (req, res) => {
 	// POST DATE / END DATE
 	let SEISAN_DATE = dateTimeNow();
 
-	// let TBL_URIAGE_DTL_CLASS = [];
 	let username = param.username;
 	let password = param.password;
 	let seat_no = param.seat_no;
@@ -96,12 +96,11 @@ app.post('/api/sales', async (req, res) => {
 	let getSEQ = 0;
 
 	let _uriage = '';
-	let autoPackClass = [];
-	// let uriageDtlToToken = [];
 	let tempUriageDtl = {};
 	let total_price = 0;
 	let all_tax = 0;
 	let maebaraiTotal = 0;
+	let salesDataCnt = 0;
 
 	let MST_SHOP = await pool.request()
 	.query("SELECT * FROM MST_SHOP;");
@@ -117,10 +116,10 @@ app.post('/api/sales', async (req, res) => {
 
 	try {
 		// CHECK SEAT_NO DATA
-		let SEAT_NO = await pool.request()
+		let SALES_DATA = await pool.request()
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT * FROM TBL_URIAGE WHERE SEAT_NO = @SEAT_NO AND DELETE_FLG = 0 AND SEISAN_FLG = 0");
-		if(SEAT_NO.recordset.length === 0) {
+		if(SALES_DATA.recordset.length === 0) {
 			REQUEST_LOG(req,'Validation Error: SEAT_NO Seat number not found');
 			sql.close();
 			return res.status(400).json(CNST_ERROR_CODE.error_2);
@@ -148,47 +147,84 @@ app.post('/api/sales', async (req, res) => {
 		.input('seatno', sql.Int, seat_no)
 		.query("SELECT * FROM [TBL_URIAGE] AS [TBL_URIAGE] WHERE [TBL_URIAGE].[SEAT_NO] = @seatno AND [TBL_URIAGE].[DELETE_FLG] = 0 AND [TBL_URIAGE].[SEISAN_FLG] = 0;");
 		if(result1.recordset.length > 0) {
+
+			salesDataCnt = result1.recordset.length;
+
+			for(let iSeatData in result1.recordset) {
+				let SQL = "";
+				let { MEMBER_ID,SALES_NO,SEAT_NO } = result1.recordset[iSeatData];
+
+				SQL = "SELECT * FROM TBL_AWAY_SHOP WHERE SALES_NO = @SALES_NO AND MEMBER_ID = @MEMBER_ID";
+				let tblAwayShop = await pool.request()
+				.input('SALES_NO', sql.VarChar(12), SALES_NO)
+				.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
+				.query(SQL);
+
+				if(tblAwayShop.recordset.length !== 0) {
+					
+					SQL = "SELECT * FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 3";
+					let tblGate = await pool.request()
+					.input('SEAT_NO', sql.VarChar(12), SEAT_NO)
+					.query(SQL);
+					if(tblGate.recordset.length !== 0) {
+						salesDataCnt-1;
+						result1.recordset.splice(iSeatData,1,'undefined');
+					}
+
+				}
+
+				if(salesDataCnt === 0) {
+					REQUEST_LOG(req,'Error: TBL_AWAY_SHOP and TBL_GATE found');
+					sql.close();
+					return res.status(400).json(CNST_ERROR_CODE.error_2);
+				}
+
+			}
+
 			for(let i in result1.recordset) {
-				let obj = result1.recordset[i];
-				member_flg = obj.MEMBER_FLG;
-				_uriage = obj;
-				total_price = total_price - obj.MAEUKE_YEN;
-				maebaraiTotal += obj.MAEUKE_YEN;
-				let GETEXT_AUTOPACK_HT = await GET_EXT_AUTOPACK_HT(await TBL_URIAGE_DTL(obj.SALES_NO),obj);
-				let __COMPUTE = await COMPUTE_TOTAL_YEN(GETEXT_AUTOPACK_HT,obj);
-				all_tax = all_tax += __COMPUTE.TaxYen;
-				for(let x in GETEXT_AUTOPACK_HT) {
-					let xObj = GETEXT_AUTOPACK_HT[x];
-					total_price += xObj.TOTAL_YEN;
+
+				if(result1.recordset[i] !== 'undefined') {
+					let obj = result1.recordset[i];
+					member_flg = obj.MEMBER_FLG;
+					_uriage = obj;
+					total_price = total_price - obj.MAEUKE_YEN;
+					maebaraiTotal += obj.MAEUKE_YEN;
+					let GETEXT_AUTOPACK_HT = await GET_EXT_AUTOPACK_HT(await TBL_URIAGE_DTL(obj.SALES_NO),obj);
+					let __COMPUTE = await COMPUTE_TOTAL_YEN(GETEXT_AUTOPACK_HT,obj);
+					all_tax = all_tax += __COMPUTE.TaxYen;
+					for(let x in GETEXT_AUTOPACK_HT) {
+						let xObj = GETEXT_AUTOPACK_HT[x];
+						total_price += xObj.TOTAL_YEN;
+					}
+
+					let tblUriageData = {
+						"SALES_NO":obj.SALES_NO,
+						"MEMBER_ID":obj.MEMBER_ID,
+						"MEMBER_FLG":obj.MEMBER_FLG,
+						"LOGIN_DATE":convert_datetime(obj.LOGIN_DATE),
+						"SEISAN_DATE":return_json.POSTED_DATE,
+						"USE_MIN":await SEAT_ITEM_USE_MIN(obj.SALES_NO,return_json.POSTED_DATE),
+						"MEMBER_NM":obj.MEMBER_NM,
+						"MEMBER_SEX":obj.MEMBER_SEX,
+						"MAEUKE_YEN":obj.MAEUKE_YEN,
+						"SEAT_NO":obj.SEAT_NO,
+						"UPDATE_STAFF_ID":CNST_STAFF_ID,
+						"SHOUKEI_YEN":__COMPUTE.SyoukeiYen,
+						"GOUKEI_YEN":__COMPUTE.GoukeiYen,
+						"URIAGE_YEN":__COMPUTE.UriageYen,
+						"TAX_YEN":__COMPUTE.TaxYen,
+						"AZUKARI_YEN":0,
+						"CHANGE_YEN":0
+					}
+
+					return_json.SALES_DATA.push({
+						"TBL_URIAGE":tblUriageData,
+						"TBL_URIAGE_DTL":GETEXT_AUTOPACK_HT,
+						"TBL_SEAT_STATUS":await TBL_SEAT_STATUS(obj.SALES_NO),
+						"MST_SEAT":await MST_SEAT(obj.SEAT_NO)
+					});
 				}
 
-				let tblUriageData = {
-					"SALES_NO":obj.SALES_NO,
-					"MEMBER_ID":obj.MEMBER_ID,
-					"MEMBER_FLG":obj.MEMBER_FLG,
-					"LOGIN_DATE":convert_datetime(obj.LOGIN_DATE),
-					"SEISAN_DATE":return_json.POSTED_DATE,
-					"USE_MIN":await SEAT_ITEM_USE_MIN(obj.SALES_NO,return_json.POSTED_DATE),
-					"MEMBER_NM":obj.MEMBER_NM,
-					"MEMBER_SEX":obj.MEMBER_SEX,
-					"MAEUKE_YEN":obj.MAEUKE_YEN,
-					"SEAT_NO":obj.SEAT_NO,
-					"UPDATE_STAFF_ID":CNST_STAFF_ID,
-					"SHOUKEI_YEN":__COMPUTE.SyoukeiYen,
-					"GOUKEI_YEN":__COMPUTE.GoukeiYen,
-					"URIAGE_YEN":__COMPUTE.UriageYen,
-					"TAX_YEN":__COMPUTE.TaxYen,
-					"AZUKARI_YEN":0,
-					"CHANGE_YEN":0
-				}
-
-				return_json.SALES_DATA.push({
-					"TBL_URIAGE":tblUriageData,
-					"TBL_URIAGE_DTL":GETEXT_AUTOPACK_HT,
-					"TBL_SEAT_STATUS":await TBL_SEAT_STATUS(obj.SALES_NO),
-					"MST_SEAT":await MST_SEAT(obj.SEAT_NO)
-				});
-				
 			}
 
 			// let groupedSalesNo = await GROUPED_SALES_NO(ungroupedTblUriageDtlTemp);
@@ -196,7 +232,12 @@ app.post('/api/sales', async (req, res) => {
 			return_json.ALL_TOTAL = total_price;
 			return_json.ALL_TAX = all_tax;
 			return_json.MAEBARAI_YEN = maebaraiTotal;
+		} else {
+			REQUEST_LOG(req,'Validation Error: SEAT_NO Seat number not found');
+			sql.close();
+			return res.status(400).json(CNST_ERROR_CODE.error_2);
 		}
+
 		REQUEST_LOG(req,`Response: ${JSON.stringify(return_json)}`);
 		sql.close();
 		return res.status(200).json(return_json);
@@ -205,9 +246,7 @@ app.post('/api/sales', async (req, res) => {
 			let OBJO = return_json.SALES_DATA[ii];
 			let __COMPUTE = await COMPUTE_TOTAL_YEN(OBJO.TBL_URIAGE_DTL,OBJO.TBL_URIAGE);
 		}
-		// const logMsg = `API-SALES: Success request`;
-		// const data = return_json;
-		// MONITOR_LOG(200,logMsg,data,res,true);
+
 	} catch(err) {
 		REQUEST_LOG(req,`Error: ${err}`);
 		sendError(CNST_ERROR_CODE.error_11,'get tbl uriage\n'+err);
@@ -784,6 +823,8 @@ app.post('/api/sales', async (req, res) => {
 
 		let autoPackIndex = 0;
 
+		let autoPackClass = [];
+
 		let useMin = await CALC_TOTAL_MINS(seatUseStartDate,seatUseEndDate);
 		let weekFlg = await GET_WEEK_FLG(convert_datetime(seatUseStartDate));
 
@@ -836,6 +877,19 @@ app.post('/api/sales', async (req, res) => {
 			let exCurrentDate = (PackEndTime == '')?getDateTimeToString(new Date(seatUseStartDate.setSeconds(seatUseStartDate.getSeconds()+60))):await GET_SEAT_ITEM_END_DATE(data);
 
 			totalYen = itemPrice + (await CALC_EXPRICE_VIRTUAL(seatUseStartDate,seatUseEndDate,uriageMemberFlg,itemBaseMin,exItemId,ExBaseMin,PackEndTime,useCount));
+
+			autoPackClass.push({
+				ITEM_ID: itemId,
+				ITEM_NM: itemName,
+				ITEM_SEQ: itemSeq,
+				ITEM_PRICE: itemPrice,
+				BASE_MIN: itemBaseMin,
+				EX_ITEM_ID: exItemId,
+				EX_ITEM_NM: exItemNm,
+				EX_BASE_MIN: ExBaseMin,
+				PACK_END_TIME: PackEndTime,
+				TOTAL_YEN: totalYen
+			});
 
 			let SQL_PACK_A = "IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN ) BEGIN CREATE TABLE #TMP_SEAT_ITEM_10 ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_10 SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN CREATE TABLE #TMP_SEAT_ITEM_WEEK ( ITEM_ID VARCHAR(12), ITEM_NM VARCHAR(120), SEQ INT, ITEM_PRICE INT, BASE_MIN SMALLINT, PACK_END_TIME TIME(0), EX_ITEM_ID VARCHAR(12), EX_ITEM_NM VARCHAR(120), EX_BASE_MIN SMALLINT ) INSERT INTO #TMP_SEAT_ITEM_WEEK SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN SELECT * FROM #TMP_SEAT_ITEM_WEEK A UNION SELECT * FROM #TMP_SEAT_ITEM_10 B WHERE B.ITEM_ID NOT IN (SELECT A.ITEM_ID FROM #TMP_SEAT_ITEM_WEEK A) ORDER BY ITEM_PRICE DROP TABLE #TMP_SEAT_ITEM_10 DROP TABLE #TMP_SEAT_ITEM_WEEK END ELSE IF EXISTS( SELECT TOP 1 S.ITEM_ID FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN ) SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND ( ( S.START_CHANGE_TIME <= @ENDDATE AND CONVERT(TIME, DATEADD(MINUTE, - 1, S.END_CHANGE_TIME)) >= @ENDDATE ) OR ( ISNULL(S.START_CHANGE_TIME, '') = '' AND ISNULL(s.END_CHANGE_TIME, '') = '' ) ) AND S.WEEK_FLG = @WEEK_FLG ORDER BY S.BASE_MIN ELSE SELECT TOP 1 S.ITEM_ID, S.ITEM_NM, S.SEQ, CASE WHEN @MEMBER_FLG = 1 THEN S.MEMBER_PRICE ELSE S.VISITOR_PRICE END AS ITEM_PRICE, S.BASE_MIN, S.PACK_END_TIME, S.EX_ITEM_ID, E.ITEM_NM AS EX_ITEM_NM, E.BASE_MIN AS EX_BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM E ON E.ITEM_ID = S.EX_ITEM_ID WHERE S.BASE_MIN >= @USEMIN AND AUTO_PACK_ID = @AUTO_PACK_ID AND S.ITEM_ID <> AUTO_PACK_ID AND S.WEEK_FLG = 10 ORDER BY S.BASE_MIN";
 
@@ -894,7 +948,7 @@ app.post('/api/sales', async (req, res) => {
 						EX_ITEM_NM: obj.EX_ITEM_NM,
 						EX_BASE_MIN: obj.EX_BASE_MIN,
 						PACK_END_TIME: obj.PACK_END_TIME,
-						TOTAL_YEN: totalYen
+						TOTAL_YEN: totalYen + (await CALC_EXPRICE_VIRTUAL(seatUseStartDate,seatUseEndDate,uriageMemberFlg,obj.BASE_MIN,obj.EX_ITEM_ID,obj.EX_BASE_MIN,obj.PACK_END_TIME,useCount))
 					});
 
 				}
@@ -902,13 +956,13 @@ app.post('/api/sales', async (req, res) => {
 			}
 
 			//Get Current Pack
-			minPrice = autoPackClass[0].ITEM_PRICE;
+			minPrice = autoPackClass[0].TOTAL_YEN;
 			autoPackIndex = 0;
 
 			//Get Lowest Price Pack
 			for(let i = 0; i < autoPackClass.length; i++) {
 				if(autoPackClass[i].TOTAL_YEN <= minPrice) {
-					minPrice = autoPackClass[i].ITEM_PRICE;
+					minPrice = autoPackClass[i].TOTAL_YEN;
 					autoPackIndex = i;
 				}
 			}
@@ -1459,7 +1513,6 @@ app.post('/api/deposit', async (req,res) => {
 		let postDataRules = {
 			"SALES_NO":"Required Sales no", 
 			"MEMBER_ID":"Required Member ID",
-			"DEPOSIT_AMOUNT":"Required Deposit Amount",
 			"AWAY_TIME":"Required Away time"
 		}
 		
@@ -1479,12 +1532,12 @@ app.post('/api/deposit', async (req,res) => {
 			if(VALIDATE_SALES_NO.recordset.length > 0) {
 
 				//VALIDATE DEPOSIT VALUE
-				let regexp = new RegExp('^(?:[1-9]|[1-9][0-9]+)$');
+				let regexp = new RegExp('^(?:[0-9]|[1-9][0-9]+)$');
 				if(!regexp.test(DEPOSIT_AMOUNT)) {
 					console.log('VALIDATE DEPOSIT VALUE');
 					REQUEST_LOG(req,`Error: VALIDATE DEPOSIT VALUE`);
 					sql.close();
-					return res.status(400).send(CNST_ERROR_CODE.error_2);
+					return res.status(400).json(CNST_ERROR_CODE.error_2);
 				}
 
 				let GET_TBL_URIAGE = await pool.request()
@@ -1497,49 +1550,49 @@ app.post('/api/deposit', async (req,res) => {
 
 				if(GET_TBL_URIAGE.recordset.length !== 0 && TBL_GATE_SEQ.recordset.length !== 0) {
 
-					SQL = "UPDATE [TBL_URIAGE] SET MAEUKE_YEN = @DEPOSIT_AMOUNT WHERE [SALES_NO] = @SALES_NO AND [MEMBER_ID] = @MEMBER_ID;";
-					let UPDATE_TBL_URIAGE = await pool.request()
-					.input('DEPOSIT_AMOUNT', sql.Int, DEPOSIT_AMOUNT)
-					.input('SALES_NO', sql.VarChar(12), SALES_NO)
-					.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
-					.query(SQL);
-
-					if(UPDATE_TBL_URIAGE.rowsAffected[0] === 1) {
-
-						let INSERT_AWAY_SHOP = await pool.request()
+					if(DEPOSIT_AMOUNT !== 0) {
+						SQL = "UPDATE [TBL_URIAGE] SET MAEUKE_YEN = @DEPOSIT_AMOUNT WHERE [SALES_NO] = @SALES_NO AND [MEMBER_ID] = @MEMBER_ID;";
+						let UPDATE_TBL_URIAGE = await pool.request()
+						.input('DEPOSIT_AMOUNT', sql.Int, DEPOSIT_AMOUNT)
 						.input('SALES_NO', sql.VarChar(12), SALES_NO)
 						.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
-						.input('AWAY_TIME', sql.DateTime2(0), AWAY_TIME)
-						.query("INSERT INTO TBL_AWAY_SHOP (SALES_NO,MEMBER_ID,AWAY_TIME) VALUES(@SALES_NO,@MEMBER_ID,@AWAY_TIME)");
-
-						let UPDATE_TBL_GATE = await pool.request()
-						.input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
-						.input('SEQ', sql.Int, TBL_GATE_SEQ.recordset[0].SEQ)
-						.query("UPDATE TBL_GATE SET LOGIN_FLG = 3, OPEN_FLG = 0 WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ;");
-
-						REQUEST_LOG(req,`Response: ${CNST_ERROR_CODE.error_0}`);
-						sql.close();
-						return res.status(200).send(CNST_ERROR_CODE.error_0);
-	
-					} else {
-						console.log('TBL_URIAGE no update');
-						REQUEST_LOG(req,`Error: TBL_URIAGE no update`);
-						sql.close();
-						return res.status(400).send(CNST_ERROR_CODE.error_2);
+						.query(SQL);
 					}
+
+					let INSERT_AWAY_SHOP = await pool.request()
+					.input('SALES_NO', sql.VarChar(12), SALES_NO)
+					.input('MEMBER_ID', sql.VarChar(12), MEMBER_ID)
+					.input('AWAY_TIME', sql.VarChar, AWAY_TIME)
+					.query("INSERT INTO TBL_AWAY_SHOP (SALES_NO,MEMBER_ID,AWAY_TIME) VALUES(@SALES_NO,@MEMBER_ID,@AWAY_TIME)");
+
+					let UPDATE_TBL_GATE = await pool.request()
+					.input('SEAT_NO', sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
+					.input('SEQ', sql.Int, TBL_GATE_SEQ.recordset[0].SEQ)
+					.query("UPDATE TBL_GATE SET LOGIN_FLG = 3, OPEN_FLG = 0 WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ;");
+
+					SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
+					let UPDATE_MST_SEAT = await pool.request()
+					.input("SEAT_STATUS", sql.Int, 1)
+					.input("SEAT_NO", sql.VarChar, GET_TBL_URIAGE.recordset[0].SEAT_NO)
+					.input("UPDATE_STAFF_ID", sql.VarChar, CNST_STAFF_ID)
+					.query(SQL);
+
+					REQUEST_LOG(req,`Response: ${CNST_ERROR_CODE.error_0}`);
+					sql.close();
+					return res.status(200).json(CNST_ERROR_CODE.error_0);
 
 				} else {
 					console.log('TBL_URIAGE and TBL_GATE no data found');
 					REQUEST_LOG(req,`Error: TBL_URIAGE and TBL_GATE no data found`);
 					sql.close();
-					return res.status(400).send(CNST_ERROR_CODE.error_2);
+					return res.status(400).json(CNST_ERROR_CODE.error_2);
 				}
 
 			} else {
 				console.log('TBL_URIAGE no data');
 				REQUEST_LOG(req,`Error: TBL_URIAGE no data`);
 				sql.close();
-				return res.status(400).send(CNST_ERROR_CODE.error_2);
+				return res.status(400).json(CNST_ERROR_CODE.error_2);
 			}
 
 		})
@@ -1547,14 +1600,14 @@ app.post('/api/deposit', async (req,res) => {
 			console.log('API-DEPOSIT post validation\n'+err);
 			REQUEST_LOG(req,`Error: API-DEPOSIT post validation`);
 			sql.close();
-			return res.status(400).send(CNST_ERROR_CODE.error_3);
+			return res.status(400).json(CNST_ERROR_CODE.error_3);
 		});
 
 	} catch(err) {
 		console.log('API-DEPOST\n'+err);
 		REQUEST_LOG(req,`Error: API-DEPOSIT ${err}`);
 		sql.close();
-		return res.status(400).send(CNST_ERROR_CODE.error_11);
+		return res.status(400).json(CNST_ERROR_CODE.error_11);
 	}
 
 });
@@ -3112,7 +3165,7 @@ app.post('/api/cancel', async (req,res) => {
 				});
 				transaction.on('commit', () => {
 					console.log('API-CANCEL: Success request\n');
-					REQUEST_LOG(req,`Error: API-CANCEL committed`);
+					REQUEST_LOG(req,`Response: API-CANCEL committed`);
 					sql.close();
 					return res.status(200).json(CNST_ERROR_CODE.error_0);
 				});
