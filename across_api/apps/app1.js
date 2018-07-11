@@ -34,7 +34,7 @@ let userPassValidation = function(req,res,next) {
 	if(req.method != 'POST') res.end();
 	try{
 		if(req.body.username == CNST_USERNAME && req.body.password == CNST_PASSWORD) {
-			REQUEST_LOG(req,'Request');
+			REQUEST_LOG(req,'REQUEST:');
 			next();
 		} else {
 			throw 'Username and Password authentication failed.';
@@ -120,7 +120,7 @@ app.post('/api/sales', async (req, res) => {
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT * FROM TBL_URIAGE WHERE SEAT_NO = @SEAT_NO AND DELETE_FLG = 0 AND SEISAN_FLG = 0");
 		if(SALES_DATA.recordset.length === 0) {
-			REQUEST_LOG(req,'Validation Error: SEAT_NO Seat number not found');
+			REQUEST_LOG(req,`Error: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_2);
 		}
@@ -130,7 +130,7 @@ app.post('/api/sales', async (req, res) => {
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT SEAT_STATUS FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO");
 		if(SEAT_STATUS.recordset[0].SEAT_STATUS == 2) {
-			REQUEST_LOG(req,'Validation Error: SEAT_STATUS is 2');
+			REQUEST_LOG(req,'Error: SEAT_STATUS is 2');
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_5);
 		}
