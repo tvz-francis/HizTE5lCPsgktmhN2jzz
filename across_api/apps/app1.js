@@ -34,13 +34,14 @@ let userPassValidation = function(req,res,next) {
 	if(req.method != 'POST') res.end();
 	try{
 		if(req.body.username == CNST_USERNAME && req.body.password == CNST_PASSWORD) {
-			REQUEST_LOG(req,'REQUEST:');
+			REQUEST_LOG(req,`REQUEST:1`);
 			next();
 		} else {
 			throw 'Username and Password authentication failed.';
 		}
 	} catch(err) {
 		console.log(err);
+		REQUEST_LOG(req,`RESPONSE: ${CNST_ERROR_CODE.error_3}`);
 		res.status(200).send(CNST_ERROR_CODE.error_3);
 		return;
 	}
@@ -120,7 +121,7 @@ app.post('/api/sales', async (req, res) => {
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT * FROM TBL_URIAGE WHERE SEAT_NO = @SEAT_NO AND DELETE_FLG = 0 AND SEISAN_FLG = 0");
 		if(SALES_DATA.recordset.length === 0) {
-			REQUEST_LOG(req,`Error: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_2);
 		}
@@ -130,7 +131,7 @@ app.post('/api/sales', async (req, res) => {
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT SEAT_STATUS FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO");
 		if(SEAT_STATUS.recordset[0].SEAT_STATUS == 2) {
-			REQUEST_LOG(req,'Error: SEAT_STATUS is 2');
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_5} SEAT_STATUS is 2`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_5);
 		}
@@ -163,7 +164,7 @@ app.post('/api/sales', async (req, res) => {
 				.input("SEISAN_FLG", sql.Int, 0)
 				.query(SQL);
 				if(checkRental.recordset[0].TOTAL_QU != 0) {
-					REQUEST_LOG(req,'Error: Rental Validation');
+					REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_7} Rental Validation`);
 					sql.close();
 					return res.status(200).send(CNST_ERROR_CODE.error_7);
 				}
@@ -188,7 +189,7 @@ app.post('/api/sales', async (req, res) => {
 				}
 
 				if(salesDataCnt === 0) {
-					REQUEST_LOG(req,'Error: TBL_AWAY_SHOP and TBL_GATE found');
+					REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_2} TBL_AWAY_SHOP and TBL_GATE found`);
 					sql.close();
 					return res.status(200).send(CNST_ERROR_CODE.error_2);
 				}
@@ -247,12 +248,12 @@ app.post('/api/sales', async (req, res) => {
 			return_json.ALL_TAX = all_tax;
 			return_json.MAEBARAI_YEN = maebaraiTotal;
 		} else {
-			REQUEST_LOG(req,'Validation Error: SEAT_NO Seat number not found');
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_2);
 		}
 
-		REQUEST_LOG(req,`Response: ${JSON.stringify(return_json)}`);
+		REQUEST_LOG(req,`RESPONSE: ${JSON.stringify(return_json)}`);
 		sql.close();
 		return res.status(200).send(return_json);
 
@@ -262,7 +263,7 @@ app.post('/api/sales', async (req, res) => {
 		}
 
 	} catch(err) {
-		REQUEST_LOG(req,`Error: ${err}`);
+		REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
 		sendError(CNST_ERROR_CODE.error_11,'get tbl uriage\n'+err);
 	}
 
@@ -342,7 +343,7 @@ app.post('/api/sales', async (req, res) => {
 			// return_data.UPDATE_DATE = SEISAN_DATE;
 		} catch(err) {
 			console.log(err);
-			REQUEST_LOG(req,`Error: ${err}`);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_11);
 		}
@@ -363,7 +364,7 @@ app.post('/api/sales', async (req, res) => {
 			return_data.LOGIN_CNT = MST_SEAT.LOGIN_CNT;
 		} catch(err) {
 			console.log(err);
-			REQUEST_LOG(req,`Error: ${err}`);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_11);
 		}
@@ -453,8 +454,9 @@ app.post('/api/sales', async (req, res) => {
 				return UDTL;
 			}
 		} catch(err) {
-			REQUEST_LOG(req,`Error: ${err}`);
-			sendError(0,'ExCurrentDate: '+err);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
 		}
 	}
 
@@ -502,8 +504,10 @@ app.post('/api/sales', async (req, res) => {
 			}
 
 		} catch(err) {
-			REQUEST_LOG(req,`Error: ${err}`);
-			sendError(0,'GET_EX_PRICE: '+err);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+			// sendError(0,'GET_EX_PRICE: '+err);
 		}
 		return price;
 	}
@@ -532,8 +536,10 @@ app.post('/api/sales', async (req, res) => {
 			} while(currSeq == await GET_EX_SEQ(exItemId,await GET_WEEK_FLG(startDate),new Date(startDate).getHours()));
 			maxMin = Math.floor((new Date(maxDate) - new Date(exCurrentDate)) / 60000);
 		} catch(err) {
-			REQUEST_LOG(req,`Error: ${err}`);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
+			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_11);
+			// return res.status(200).send(CNST_ERROR_CODE.error_11);
 		}
 		return maxMin;
 	}
@@ -568,8 +574,10 @@ app.post('/api/sales', async (req, res) => {
 			}
 
 		} catch(err) {
-			REQUEST_LOG(req,`Error: ${err}`);
-			sendError(0,'GET_EX_SEQ: '+err);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+			// sendError(0,'GET_EX_SEQ: '+err);
 		}
 		return SEQ;
 	}
@@ -637,8 +645,10 @@ app.post('/api/sales', async (req, res) => {
 			}
 			return weekflag;
 		} catch(err) {
-			REQUEST_LOG(req,`Error: ${err}`);
-			sendError(0,'GET_WEEK_FLG: '+err);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+			// sendError(0,'GET_WEEK_FLG: '+err);
 		}
 	}
 
@@ -799,8 +809,10 @@ app.post('/api/sales', async (req, res) => {
 			}
 
 		} catch(err) {
-			REQUEST_LOG(req,`Error: ${err}`);
-			sendError(CNST_ERROR_CODE.error_11,'GET_EXT_AUTOPACK_HT\n'+err);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+			// sendError(CNST_ERROR_CODE.error_11,'GET_EXT_AUTOPACK_HT\n'+err);
 		}
 		return _tbl_uriage_class;
 	}
@@ -1503,7 +1515,7 @@ app.post('/api/init', async (req,res) => {
 		};
 
 		return_json = mstShopDetails;
-		REQUEST_LOG(req,`Response: ${JSON.stringify(return_json)}`);
+		REQUEST_LOG(req,`RESPONSE: ${JSON.stringify(return_json)}`);
 		sql.close();
 		return res.status(200).send(return_json);
 	} catch(err) {
@@ -3331,7 +3343,8 @@ function REQUEST_LOG(req,type) {
 		request_data:req.body,
 		original_url:req.originalUrl
 	};
-	
+	let cliMonit = `${toLocaleDateString} ${toLocaleTimeString}`;
+	console.log(cliMonit);
 	let txt = `${toLocaleTimeString}: ${type} ${JSON.stringify(log_json)}\r\n`;
 	fs.appendFileSync(`${logFile}/${toLocaleDateString}.txt`, txt, (err) => {
 		if(err) return err;
