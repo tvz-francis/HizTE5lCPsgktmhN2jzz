@@ -29,19 +29,30 @@ const CNST_USERNAME = 'admin';
 const CNST_PASSWORD = 'admin123';
 
 app.use(bodyParser.json());
-
+console.log(new Date().toString());
 let userPassValidation = function(req,res,next) {
 	if(req.method != 'POST') res.end();
 	try{
+		let dateTime = new Date();
+		const toLocaleTimeString = dateTime.toLocaleTimeString();
+		const toLocaleDateString = dateTime.toLocaleDateString();
+		const cliMonit = `${toLocaleDateString} ${toLocaleTimeString}`;
+		let log_json = {
+			request_url:req.url,
+			request_method:req.method,
+			request_data:req.body,
+			original_url:req.originalUrl
+		};
 		if(req.body.username == CNST_USERNAME && req.body.password == CNST_PASSWORD) {
-			REQUEST_LOG(req,`REQUEST:1`);
+			console.log(`${cliMonit} REQUEST: ${JSON.stringify(log_json)}`);
+			REQUEST_LOG(req,`REQUEST:`);
 			next();
 		} else {
 			throw 'Username and Password authentication failed.';
 		}
 	} catch(err) {
 		console.log(err);
-		REQUEST_LOG(req,`RESPONSE: ${CNST_ERROR_CODE.error_3}`);
+		REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_3}`);
 		res.status(200).send(CNST_ERROR_CODE.error_3);
 		return;
 	}
@@ -121,7 +132,7 @@ app.post('/api/sales', async (req, res) => {
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT * FROM TBL_URIAGE WHERE SEAT_NO = @SEAT_NO AND DELETE_FLG = 0 AND SEISAN_FLG = 0");
 		if(SALES_DATA.recordset.length === 0) {
-			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
+			REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_2);
 		}
@@ -131,7 +142,7 @@ app.post('/api/sales', async (req, res) => {
 		.input('SEAT_NO', sql.NVarChar, req.body.seat_no)
 		.query("SELECT SEAT_STATUS FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO");
 		if(SEAT_STATUS.recordset[0].SEAT_STATUS == 2) {
-			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_5} SEAT_STATUS is 2`);
+			REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_5} SEAT_STATUS is 2`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_5);
 		}
@@ -164,7 +175,7 @@ app.post('/api/sales', async (req, res) => {
 				.input("SEISAN_FLG", sql.Int, 0)
 				.query(SQL);
 				if(checkRental.recordset[0].TOTAL_QU != 0) {
-					REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_7} Rental Validation`);
+					REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_7} Rental Validation`);
 					sql.close();
 					return res.status(200).send(CNST_ERROR_CODE.error_7);
 				}
@@ -189,7 +200,7 @@ app.post('/api/sales', async (req, res) => {
 				}
 
 				if(salesDataCnt === 0) {
-					REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_2} TBL_AWAY_SHOP and TBL_GATE found`);
+					REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_2} TBL_AWAY_SHOP and TBL_GATE found`);
 					sql.close();
 					return res.status(200).send(CNST_ERROR_CODE.error_2);
 				}
@@ -248,7 +259,7 @@ app.post('/api/sales', async (req, res) => {
 			return_json.ALL_TAX = all_tax;
 			return_json.MAEBARAI_YEN = maebaraiTotal;
 		} else {
-			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
+			REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_2);
 		}
@@ -1728,23 +1739,50 @@ app.post('/api/paid', async (req,res) => {
 		return res.status(200).send(CNST_ERROR_CODE.error_0);
 	}
 
-	async function UPLOAD_SALES(jsonSales,callback) {
-		const request = await require('request');
+	async function UPLOAD_SALES2(jsonSales) {
+
+		let xrequest = false;
+
+		try {
+	
+			const request_opt = {
+				method: 'post',
+				body: jsonSales,
+				json: true,
+				url: 'http://acrossweb.net/upload/sales'
+			};
+		
+			request(request_opt,(err, httpResponse, body) => {
+				if(err) return res.status(200).send(CNST_ERROR_CODE.error_11);
+				
+				xrequest = true;
+				REQUEST_LOG(req,`X-SITE: ${body}`);
+
+			});
+
+		} catch(err) {
+			console.log(err);
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} UPLOAD_SALES2 ${err}`);
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+		}
+		return xrequest;
+	}
+
+	function UPLOAD_SALES(jsonSales) {
+		const request = require('request');
 		const request_opt = {
 			method: 'post',
 			body: jsonSales,
 			json: true,
 			url: 'http://acrossweb.net/upload/sales'
 		};
-		let returnCode = CNST_ERROR_CODE.error_11;
 
 		try {
 
 			request(request_opt,(err, httpResponse, body) => {
 				if(err) ERROR_LOGGER(CNST_ERROR_CODE.error_1,'VERIFICATION ERROR\n'+err);
 				// returnCode = body;
-				callback(body);
-	
+				REQUEST_LOG(req,`X-SITE: ${body}`);
 				// if(body.code == 1) {
 				// 	let data = body.coupon;
 			
@@ -1767,11 +1805,9 @@ app.post('/api/paid', async (req,res) => {
 			});
 
 		} catch(err) {
-			REQUEST_LOG(req,`Error: UPLOAD_SALES ${err}`);
-			ERROR_LOGGER(CNST_ERROR_CODE.error_11,'UPLOAD_SALES\n');
+			REQUEST_LOG(req,`ERROR: ${err}`);
+			// ERROR_LOGGER(CNST_ERROR_CODE.error_11,'UPLOAD_SALES\n');
 		}
-
-		return returnCode;
 		
 	}
 	
@@ -2250,6 +2286,7 @@ app.post('/api/paid', async (req,res) => {
 				}
 			}
 			_UPDATE_SEAT_STATUS = await UPDATE_SEAT_STATUS(SEAT_NO,seatStatus,CNST_STAFF_ID);
+			let UDS = await UPLOAD_DATA_SALES(uriageDtlObj.SALES_DATA);
 		} catch (err) {
 			console.log('SINGLE_SALES_NO\n'+err);
 			REQUEST_LOG(req,`Error: SINGLE_SALES_NO ${err}`);
@@ -2531,6 +2568,7 @@ app.post('/api/paid', async (req,res) => {
 			// let UDS = await UPLOAD_DATA_SALES(salesData.SALES_DATA);
 			// console.log(UDS);
 			newMemberCnt = CtrnewMemberCnt;
+			let UDS = await UPLOAD_DATA_SALES(salesData.SALES_DATA);
 		} catch(err) {
 			REQUEST_LOG(req,`Error: MULTIPLE_SALES_NO ${err}`);
 			ERROR_LOGGER(CNST_ERROR_CODE.error_11,'MULTIPLE_SALES_NO: '+err);
@@ -2635,10 +2673,8 @@ app.post('/api/paid', async (req,res) => {
 			};
 			uploadJson.json.push(return_json);
 		}
-		let uploadSales = await UPLOAD_SALES(uploadJson,(result) => {
-			console.log(result);
-			return result;
-		});
+		REQUEST_LOG(req,`INFO: ${JSON.stringify(uploadJson)}`);
+		UPLOAD_SALES(uploadJson);
 	}
 
 	async function UPDATE_SEAT_STATUS(seatNo,seatStatus,staffId) {
@@ -3331,9 +3367,10 @@ function MONITOR_LOG(status, logMsg, data, res, connection = false) {
 }
 
 function REQUEST_LOG(req,type) {
-	const dateTime = new Date();
+	let dateTime = new Date();
 	const toLocaleTimeString = dateTime.toLocaleTimeString();
 	const toLocaleDateString = dateTime.toLocaleDateString();
+	const cliMonit = `${toLocaleDateString} ${toLocaleTimeString}`;
 	if(!fs.existsSync(logFile)) {
 		fs.mkdirSync(logFile,'0444');
 	}
@@ -3343,8 +3380,7 @@ function REQUEST_LOG(req,type) {
 		request_data:req.body,
 		original_url:req.originalUrl
 	};
-	let cliMonit = `${toLocaleDateString} ${toLocaleTimeString}`;
-	console.log(cliMonit);
+	console.log(`${cliMonit}: ${type}`);
 	let txt = `${toLocaleTimeString}: ${type} ${JSON.stringify(log_json)}\r\n`;
 	fs.appendFileSync(`${logFile}/${toLocaleDateString}.txt`, txt, (err) => {
 		if(err) return err;
