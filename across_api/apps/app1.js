@@ -166,6 +166,18 @@ app.post('/api/sales', async (req, res) => {
 				let SQL = "";
 				let { MEMBER_ID,SALES_NO,SEAT_NO } = result1.recordset[iSeatData];
 
+				/* SHOWER VALIDATION */
+				SQL = "SELECT * FROM TBL_SHOWER_USE WHERE USE_FLG = 1 AND SALES_NO = @SALES_NO";
+				let checkShower = await pool.request()
+				.input('SALES_NO', sql.VarChar(12), SALES_NO)
+				.query(SQL);
+				if(checkShower.recordset.length > 0) {
+					UPDATE_SEAT_STATUS(SEAT_NO,1,CNST_STAFF_ID);
+					REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_8} Shower Validation`);
+					sql.close();
+					return res.status(200).send(CNST_ERROR_CODE.error_8);
+				}
+
 				/* RENTAL VALIDATION */
 				SQL = "SELECT ISNULL(SUM(ITEM_QU-RETURN_QU),0) AS TOTAL_QU FROM TBL_URIAGE_DTL WHERE SALES_NO=@SALES_NO AND ITEM_KBN=@ITEM_KBN AND SEISAN_FLG=@SEISAN_FLG AND DELETE_FLG=@DELETE_FLG";
 				let checkRental = await pool.request()
@@ -175,6 +187,7 @@ app.post('/api/sales', async (req, res) => {
 				.input("SEISAN_FLG", sql.Int, 0)
 				.query(SQL);
 				if(checkRental.recordset[0].TOTAL_QU != 0) {
+					UPDATE_SEAT_STATUS(SEAT_NO,1,CNST_STAFF_ID);
 					REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_7} Rental Validation`);
 					sql.close();
 					return res.status(200).send(CNST_ERROR_CODE.error_7);
@@ -259,6 +272,7 @@ app.post('/api/sales', async (req, res) => {
 			return_json.ALL_TAX = all_tax;
 			return_json.MAEBARAI_YEN = maebaraiTotal;
 		} else {
+			UPDATE_SEAT_STATUS(req.body.seat_no,1,CNST_STAFF_ID);
 			REQUEST_LOG(req,`WARN: ${CNST_ERROR_CODE.error_2} SEAT_NO Seat number not found`);
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_2);
@@ -274,8 +288,27 @@ app.post('/api/sales', async (req, res) => {
 		}
 
 	} catch(err) {
+		UPDATE_SEAT_STATUS(req.body.seat_no,1,CNST_STAFF_ID);
 		REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} ${err}`);
 		sendError(CNST_ERROR_CODE.error_11,'get tbl uriage\n'+err);
+	}
+
+	function UPDATE_SEAT_STATUS(seatNo,seatStatus,staffId) {
+		let SQL = '';
+		let result;
+		try {
+			SQL = "UPDATE MST_SEAT SET SEAT_STATUS = @SEAT_STATUS, UPDATE_DATE = GETDATE(), UPDATE_STAFF_ID = @UPDATE_STAFF_ID WHERE SEAT_NO = @SEAT_NO";
+			let UPDATE_MST_SEAT = pool.request()
+			.input("SEAT_STATUS", sql.Int, seatStatus)
+			.input("SEAT_NO", sql.VarChar, seatNo)
+			.input("UPDATE_STAFF_ID", sql.VarChar, staffId)
+			.query(SQL);
+		} catch(err) {
+			REQUEST_LOG(req,`ERROR: ${ERROR_LOGGER.error_11} UPDATE_SEAT_STATUS ${err}`);
+			sql.close();
+			return res.status(200).send(ERROR_LOGGER.error_11);
+		}
+		
 	}
 
 	async function GROUPED_SALES_NO(uriageDtl) {
@@ -1185,7 +1218,7 @@ app.post('/api/sales', async (req, res) => {
 		try {
 			let result2 = await pool.request()
 			.input('salesno', sql.Int, SALES_NO)
-			.query("SELECT * FROM [TBL_URIAGE_DTL] AS [TBL_URIAGE_DTL] WHERE [TBL_URIAGE_DTL].[SALES_NO] = @salesno ORDER BY SEQ ASC");
+			.query("SELECT * FROM [TBL_URIAGE_DTL] AS [TBL_URIAGE_DTL] WHERE [TBL_URIAGE_DTL].[SALES_NO] = @salesno AND SEISAN_FLG = 0 AND DELETE_FLG = 0 ORDER BY SEQ ASC");
 			return result2.recordset;
 		} catch(err) {
 			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} TBL_URIAGE_DTL ${err}`);
@@ -1402,22 +1435,26 @@ app.post('/api/gassan_sales_no', async (req,res) => {
 
 	let pool = await sql.connect(config);
 
+	let GASSAN_SALES_NO = 0;
+
 	try {
 
-		let MST_SHOP_query = "SELECT * FROM [MST_SHOP];";
+		let MST_SHOP_query = "SELECT NEXT VALUE FOR ARG_GASSAN_SALES_NO AS ARG_GASSAN_SALES_NO";
 		MST_SHOP_query = await pool.request()
 		.query(MST_SHOP_query);
 
 		if(MST_SHOP_query.recordset.length > 0) {
 			MST_SHOP_query = MST_SHOP_query.recordset[0];
 
+			GASSAN_SALES_NO = parseInt(MST_SHOP_query.ARG_GASSAN_SALES_NO);
+
 			// update mst shop
 			let UPDATE_MST_SHOP = await pool.request()
-			.input('GASSAN_SALES_NO', sql.BigInt, parseInt(MST_SHOP_query.ARG_GASSAN_SALES_NO) + 1)
+			.input('GASSAN_SALES_NO', sql.BigInt, GASSAN_SALES_NO)
 			.query("UPDATE [MST_SHOP] SET [ARG_GASSAN_SALES_NO] = @GASSAN_SALES_NO")
 			.then((result) => {
 				if(result.rowsAffected > 0) {
-					return_json.GASSAN_SALES_NO = padding(MST_SHOP_query.ARG_GASSAN_SALES_NO,11,'0');
+					return_json.GASSAN_SALES_NO = padding(GASSAN_SALES_NO,11,'0');
 					const logMsg = `API-GASSAN: Success request`;
 					const data = return_json;
 					// MONITOR_LOG(200,logMsg,data,res,true);
@@ -1469,8 +1506,13 @@ app.post('/api/gassan_sales_no', async (req,res) => {
 app.post('/api/init', async (req,res) => {
 	let return_json = {};
 	const BASE_MIN = 120;
+	// const EX_BASE_MIN = 50;
 	let pool = await sql.connect(config);
 	try {
+
+		let EX_BASE_MIN_SQL = "SELECT EX.BASE_MIN FROM MST_SEAT_ITEM S INNER JOIN MST_EX_SEAT_ITEM EX ON EX.ITEM_ID = S.EX_ITEM_ID WHERE S.ITEM_ID = '999920176262' AND S.SEQ = 0 AND EX.SEQ = 0";
+		let EX_BASE_MIN = await pool.request()
+		.query(EX_BASE_MIN_SQL);
 
 		let MST_SHOP = "SELECT * FROM MST_SHOP";
 		MST_SHOP = await pool.request()
@@ -1524,7 +1566,8 @@ app.post('/api/init', async (req,res) => {
 				"TAX_RATE":MST_TAX.TAX_RATE
 			},
 			"MST_EX_SEAT_ITEM":{
-				"BASE_MIN" : BASE_MIN
+				"BASE_MIN" : BASE_MIN,
+				"EX_BASE_MIN": EX_BASE_MIN.recordset[0].BASE_MIN
 			},
 			"MST_STAFF" : {
 				"STAFF_ID" : CNST_STAFF_ID,
@@ -2050,6 +2093,30 @@ app.post('/api/paid', async (req,res) => {
 				let JSON_TBL_SEAT_STATUS = iSalesDataObj.TBL_SEAT_STATUS;
 				let JSON_TBL_URIAGE = iSalesDataObj.TBL_URIAGE;
 				let JSON_TBL_URIAGE_DTL = iSalesDataObj.TBL_URIAGE_DTL;
+
+				// INSERT TBL_CREDIT_RIREKI
+				if(JSON_TBL_CREDIT_RIREKI) {
+
+					/* GET SEQ */
+					let CREDIT_RIREKI_SEQ = await pool.request()
+					.input('SALES_NO', sql.VarChar, JSON_TBL_CREDIT_RIREKI.SALES_NO)
+					.query("SELECT MAX(SEQ) AS SEQ FROM TBL_CREDIT_RIREKI WHERE SALES_NO = @SALES_NO");
+					if(CREDIT_RIREKI_SEQ.recordset[0].SEQ !== null) {
+						let INSERT_CREDIT_RIREKI = await pool.request()
+						.input('SALES_NO', sql.VarChar, JSON_TBL_CREDIT_RIREKI.SALES_NO)
+						.input('SEQ', sql.VarChar, JSON_TBL_CREDIT_RIREKI.SEQ)
+						.input('MEMBER_ID', sql.VarChar, JSON_TBL_CREDIT_RIREKI.MEMBER_ID)
+						.input('INPUT_PRICE', sql.VarChar, JSON_TBL_CREDIT_RIREKI.INPUT_PRICE)
+						.input('CREDIT_FLG', sql.VarChar, JSON_TBL_CREDIT_RIREKI.CREDIT_FLG)
+						.input('PAYBACK_FLG', sql.VarChar, JSON_TBL_CREDIT_RIREKI.PAYBACK_FLG)
+						.input('DELETE_FLG', sql.VarChar, JSON_TBL_CREDIT_RIREKI.DELETE_FLG)
+						.input('SEISAN_FLG', sql.VarChar, JSON_TBL_CREDIT_RIREKI.SEISAN_FLG)
+						.input('SEISAN_DATE', sql.VarChar, JSON_TBL_CREDIT_RIREKI.SEISAN_DATE)
+						.input('INPUT_STAFF_ID', sql.VarChar, JSON_TBL_CREDIT_RIREKI.INPUT_STAFF_ID)
+						.input('INPUT_DATE', sql.VarChar, JSON_TBL_CREDIT_RIREKI.INPUT_DATE)
+						.query("INSERT INTO TBL_CREDIT_RIREKI(SALES_NO,SEQ,MEMBER_ID,INPUT_PRICE,CREDIT_FLG,PAYBACK_FLG,DELETE_FLG,SEISAN_FLG,SEISAN_DATE,INPUT_STAFF_ID,INPUT_DATE) VALUES(@SALES_NO,@SEQ,@MEMBER_ID,@INPUT_PRICE,@CREDIT_FLG,@PAYBACK_FLG,@DELETE_FLG,@SEISAN_FLG,@SEISAN_DATE,@INPUT_STAFF_ID,@INPUT_DATE)");
+					}
+				}
 	
 				let GET_TBL_URIAGE = await TBL_URIAGE(JSON_TBL_URIAGE.SEAT_NO,JSON_TBL_URIAGE.SALES_NO);
 				GET_TBL_URIAGE = GET_TBL_URIAGE[0];
@@ -2713,20 +2780,20 @@ app.post('/api/paid', async (req,res) => {
 				});
 
 				transaction.on('commit',async (err,result) => {
-					// sql.close();
 					REQUEST_LOG(req,`RESPONSE: ${CNST_ERROR_CODE.error_0}`);
+					// sql.close();
 					return;
 					// return res.status(200).send(CNST_ERROR_CODE.error_0);
 				});
 
-				SQL = "UPDATE TBL_GATE SET OPEN_FLG = @OPEN_FLG , LOGIN_FLG = @LOGIN_FLG, PRICE_LIMIT_FLG = @PRICE_LIMIT_FLG, SEISAN_DATE = @SEISAN_DATE WHERE SEAT_NO = @SEAT_NO AND SEQ = @SEQ";
+				SQL = "UPDATE TBL_GATE SET OPEN_FLG = @OPEN_FLG , LOGIN_FLG = @LOGIN_FLG, PRICE_LIMIT_FLG = @PRICE_LIMIT_FLG, SEISAN_DATE = @SEISAN_DATE WHERE SEAT_NO = @SEAT_NO AND SEQ = (SELECT MIN(SEQ) AS SEQ FROM TBL_GATE WHERE SEAT_NO = @SEAT_NO AND LOGIN_FLG = 1 AND OPEN_FLG = 1 AND SEISAN_DATE IS NULL) AND SEISAN_DATE IS NULL";
 				transaction.request()
 				.input("SEAT_NO",sql.VarChar,uriage.SEAT_NO)
 				.input("SEISAN_DATE",sql.VarChar,uriage.SEISAN_DATE)
 				.input("OPEN_FLG",sql.Int,flg().OPEN_FLG)
 				.input("LOGIN_FLG",sql.Int,1)
 				.input("PRICE_LIMIT_FLG",sql.Int,flg().PRICE_LIMIT_FLG)
-				.input('SEQ', sql.Int, SEQ)
+				// .input('SEQ', sql.Int, SEQ)
 				.query(SQL,async(err,result) => {
 					if(err) return transaction.rollback();
 					transaction.commit();
@@ -3194,6 +3261,95 @@ app.post('/api/coupon_search', async (req,res) => {
 	}
 
 });
+//#endregion API-COUPON_SEARCH
+
+//#region API-COUPON_CANCEL
+app.post('/api/coupon_cancel', async (req,res) => {
+
+	const request = require('request');
+	try{
+
+		let rules = {'coupon_search':'Required.'};
+
+		postValidation(rules,req.body)
+		.then(async result => {
+
+			let { coupon_search } = req.body;
+
+			let coupon_rules = {
+				"member_id":"Required pos_members",
+				"coupon_id":"Required coupon_id",
+				"shop_fc":"Required shop_fc",
+				"post_date":"Required post_date"
+			};
+
+			postValidation(coupon_rules,coupon_search)
+			.then(async result => {
+				sendRequestAPI(coupon_search);
+			}).catch(err => {
+				REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_3} 2nd level ${err}`);
+				return res.status(200).send(CNST_ERROR_CODE.error_3);
+			});
+
+		})
+		.catch(err => {
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_3} 1st level ${err}`);
+			return res.status(200).send(CNST_ERROR_CODE.error_3);
+		});
+
+	} catch(err) {
+		REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_1} API-COUPON_SEARCH ${err}`);
+		return res.status(200).send(CNST_ERROR_CODE.error_1);
+	}
+
+	function sendRequestAPI(coupon_search) {
+
+		try {
+			let postData = {
+				"apikey": "cc03e747a6afbbcbf8be7668acfebee5",
+				"coupon_search":coupon_search
+			};
+	
+			const request_opt = {
+				method: 'post',
+				body: postData,
+				json: true,
+				url: 'http://coupon.across-web.net/api/v2/machine/cancel/coupon'
+			};
+		
+			request(request_opt,(err, httpResponse, body) => {
+				if(err) return res.status(200).send(CNST_ERROR_CODE.error_11);
+				let { code } = body;
+
+				let errorCode = {
+					2: () => { return CNST_ERROR_CODE.error_3; },
+					3: () => { return CNST_ERROR_CODE.error_2; },
+					4: () => { return CNST_ERROR_CODE.error_4; },
+					1: () => { return CNST_ERROR_CODE.error_0; },
+					6: () => { return CNST_ERROR_CODE.error_2; },
+					'default': () => { return CNST_ERROR_CODE.error_11; }
+				};
+
+				if(errorCode[code]() !== 'undefined') {
+					REQUEST_LOG(req,`XSITE: ${errorCode[code]()} ${JSON.stringify(body)}`);
+					REQUEST_LOG(req,`RESPONSE: ${code}`);
+					return res.status(200).send(errorCode[code]());
+				} else {
+					REQUEST_LOG(req,`XSITE: ${errorCode['default']()} ${JSON.stringify(body)}`);
+					REQUEST_LOG(req,`RESPONSE: ${code}`);
+					return res.status(200).send(errorCode['default']());
+				}
+
+			});
+
+		} catch(err) {
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} sendRequestAPI ${err}`);
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+		}
+	}
+
+});
+//#endregion API-COUPON_CANCEL
 
 app.post('/api/cancel', async (req,res) => {
 
