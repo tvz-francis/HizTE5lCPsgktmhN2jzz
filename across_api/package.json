@@ -17,7 +17,8 @@
     "mssql": "^4.1.0",
     "mysql": "^2.15.0",
     "pm2": "^2.10.2",
-    "request": "^2.86.0"
+    "request": "^2.86.0",
+    "xmlbuilder": "^10.0.0"
   },
   "devDependencies": {
     "nodemon": "^1.17.5"
