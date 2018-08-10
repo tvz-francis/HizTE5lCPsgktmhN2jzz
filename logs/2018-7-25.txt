@@ -1,8 +1,0 @@
-09:12:32 -- REQUEST: {"request_url":"/api/sales","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0002"},"original_url":"/api/sales"}
-09:12:32 -- WARN: 0002 SEAT_NO Seat number not found {"request_url":"/api/sales","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0002"},"original_url":"/api/sales"}
-09:12:34 -- REQUEST: {"request_url":"/api/sales","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0002"},"original_url":"/api/sales"}
-09:12:34 -- WARN: 0002 SEAT_NO Seat number not found {"request_url":"/api/sales","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0002"},"original_url":"/api/sales"}
-09:23:05 -- REQUEST: {"request_url":"/api/cancel","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0003"},"original_url":"/api/cancel"}
-09:23:05 -- RESPONSE: 0000 API-CANCEL committed {"request_url":"/api/cancel","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0003"},"original_url":"/api/cancel"}
-09:25:17 -- REQUEST: {"request_url":"/api/cancel","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0003"},"original_url":"/api/cancel"}
-09:25:17 -- RESPONSE: 0000 API-CANCEL committed {"request_url":"/api/cancel","request_method":"POST","request_data":{"username":"admin","password":"admin123","seat_no":"0003"},"original_url":"/api/cancel"}
