@@ -1901,7 +1901,7 @@ app.post('/api/paid', async (req,res) => {
 				.input("CREDIT_YEN", sql.Int, TBL_GASSAN.CREDIT_YEN)
 				.input("CHANGE_YEN", sql.Int, TBL_GASSAN.CHANGE_YEN)
 				.input("INPUT_STAFF_ID", sql.VarChar(12), CNST_STAFF_ID)
-				.input("INPUT_DATE", sql.DateTime2(0), SEISAN_DATE)
+				.input("INPUT_DATE", sql.VarChar, SALES_DATA[0].TBL_URIAGE.SEISAN_DATE)
 				.input("TAX_YEN", sql.Int, TBL_GASSAN.TAX_YEN)
 				.input("TAX_KBN", sql.Int, 0)
 				.query(SQL);
@@ -2058,6 +2058,39 @@ app.post('/api/paid', async (req,res) => {
 		return returnObj;
 	}
 
+
+	async function MST_SEAT(TBL_URIAGE,shopFcNo) {
+		let returnObj = [];
+		let SQL = '';
+
+		try {
+
+			SQL = "SELECT * FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO";
+			let query = await pool.request()
+			.input('SEAT_NO', sql.VarChar, TBL_URIAGE.SEAT_NO)
+			.query(SQL);
+			if(query.recordset.length > 0) {
+				query.recordset[0]["SHOP_FC_NO"] = shopFcNo;
+				return query.recordset[0];
+				// for(let i = 0; i < query.recordset.length; i++) {
+				// 	query.recordset[i]["SHOP_FC_NO"] = shopFcNo;
+				
+				// 	returnObj.push(query.recordset[i]);
+				// }
+			} else {
+				throw 'No match found';
+			}
+
+		} catch(err) {
+			REQUEST_LOG(req,`ERROR: ${CNST_ERROR_CODE.error_11} MST_SEAT ${err}`);
+			sql.close();
+			return res.status(200).send(CNST_ERROR_CODE.error_11);
+			// ERROR_LOGGER(CNST_ERROR_CODE.error_11,'TBL_SEAT_STATUS\n'+err);
+		}
+		return null;
+		// return returnObj;
+	}
+
 	async function TBL_CREDIT_RIREKI(tblCreditRireki,loginHolidayFlg,seisanHolidayFlg) {
 		let returnObj = [];
 		let SQL = '';
@@ -2088,35 +2121,35 @@ app.post('/api/paid', async (req,res) => {
 		return returnObj;
 	}
 
-	async function MST_SEAT(mstSeat,loginHolidayFlg,seisanHolidayFlg,seatNo) {
-		let returnObj = [];
-		let SQL = '';
+	// async function MST_SEAT(mstSeat,loginHolidayFlg,seisanHolidayFlg,seatNo) {
+	// 	let returnObj = [];
+	// 	let SQL = '';
 
-		try {
+	// 	try {
 
-			SQL = "SELECT * FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO";
-			let query = await pool.request()
-			.input('SEAT_NO', sql.VarChar, seatNo)
-			.query(SQL);
-			if(query.recordset.length > 0) {
-				for(let i = 0; i < query.recordset.length; i++) {
-					query.recordset[i].INPUT_DATE = (query.recordset[i].INPUT_DATE == null)?null:convert_datetime(query.recordset[i].INPUT_DATE);
-					// query.recordset[i].LOGIN_DATE = (query.recordset[i].LOGIN_DATE == null)?null:convert_datetime(query.recordset[i].LOGIN_DATE);
-					query.recordset[i].UPDATE_DATE = (query.recordset[i].UPDATE_DATE == null)?null:convert_datetime(query.recordset[i].UPDATE_DATE);
-					// query.recordset[i].SEISAN_DATE = (query.recordset[i].SEISAN_DATE == null)?null:convert_datetime(query.recordset[i].SEISAN_DATE);
-					query.recordset[i]["LOGIN_HOLIDAY_FLG"] = loginHolidayFlg;
-					query.recordset[i]["SEISAN_HOLIDAY_FLG"] = seisanHolidayFlg;
-					returnObj.push(query.recordset[i]);
-				}
-			} else {
-				throw 'No match found';
-			}
+	// 		SQL = "SELECT * FROM MST_SEAT WHERE SEAT_NO = @SEAT_NO";
+	// 		let query = await pool.request()
+	// 		.input('SEAT_NO', sql.VarChar, seatNo)
+	// 		.query(SQL);
+	// 		if(query.recordset.length > 0) {
+	// 			for(let i = 0; i < query.recordset.length; i++) {
+	// 				query.recordset[i].INPUT_DATE = (query.recordset[i].INPUT_DATE == null)?null:convert_datetime(query.recordset[i].INPUT_DATE);
+	// 				// query.recordset[i].LOGIN_DATE = (query.recordset[i].LOGIN_DATE == null)?null:convert_datetime(query.recordset[i].LOGIN_DATE);
+	// 				query.recordset[i].UPDATE_DATE = (query.recordset[i].UPDATE_DATE == null)?null:convert_datetime(query.recordset[i].UPDATE_DATE);
+	// 				// query.recordset[i].SEISAN_DATE = (query.recordset[i].SEISAN_DATE == null)?null:convert_datetime(query.recordset[i].SEISAN_DATE);
+	// 				query.recordset[i]["LOGIN_HOLIDAY_FLG"] = loginHolidayFlg;
+	// 				query.recordset[i]["SEISAN_HOLIDAY_FLG"] = seisanHolidayFlg;
+	// 				returnObj.push(query.recordset[i]);
+	// 			}
+	// 		} else {
+	// 			throw 'No match found';
+	// 		}
 
-		} catch(err) {
-			ERROR_LOGGER(CNST_ERROR_CODE.error_11,'TBL_SEAT_STATUS\n'+err);
-		}
-		return returnObj;
-	}
+	// 	} catch(err) {
+	// 		ERROR_LOGGER(CNST_ERROR_CODE.error_11,'TBL_SEAT_STATUS\n'+err);
+	// 	}
+	// 	return returnObj;
+	// }
 
 	async function TBL_GASSAN(tblGassan,loginHolidayFlg,seisanHolidayFlg) {
 		let returnObj = [];
@@ -2922,6 +2955,7 @@ app.post('/api/paid', async (req,res) => {
 	}
 
 	async function UPLOAD_DATA_SALES(SALES_DATA,TBL_CREDIT_RIREKI,TBL_GASSAN = null) {
+		let success = false;
 		try {
 
 			let _MST_SHOP = await pool.request()
@@ -3046,7 +3080,8 @@ app.post('/api/paid', async (req,res) => {
 					"TBL_SEAT_STATUS": await TBL_SEAT_STATUS(JSON_TBL_SEAT_STATUS,LOGIN_HOLIDAY_FLG,SEISAN_HOLIDAY_FLG,_MST_SHOP.SHOP_FC_NO),
 					"TBL_VISITOR": null,
 					"TBL_CREDIT_RIREKI":(TBL_CREDIT_RIREKI.SALES_NO != null)? (TBL_CREDIT_RIREKI.SALES_NO == JSON_TBL_URIAGE.SALES_NO)?[TBL_CREDIT_RIREKI]:null : null,
-					"MST_SEAT": null,
+					//"MST_SEAT": null,
+					"MST_SEAT": [await MST_SEAT(JSON_TBL_URIAGE,_MST_SHOP.SHOP_FC_NO)],
 					"TBL_GASSAN": (TBL_GASSAN != null)?[TBL_GASSAN]:null
 					// "TBL_CREDIT_RIREKI": (JSON_TBL_CREDIT_RIREKI == null)?null:await TBL_CREDIT_RIREKI(JSON_TBL_CREDIT_RIREKI,LOGIN_HOLIDAY_FLG,SEISAN_HOLIDAY_FLG),
 					// "MST_SEAT": (JSON_MST_SEAT == null)?null:await MST_SEAT(JSON_MST_SEAT,LOGIN_HOLIDAY_FLG,SEISAN_HOLIDAY_FLG,JSON_TBL_URIAGE.SEAT_NO),
@@ -3055,6 +3090,10 @@ app.post('/api/paid', async (req,res) => {
 				uploadJson.json.push(return_json);
 				let MST_MEMBER_UPLOAD = await UPLOAD_MST_MEMBER(JSON_TBL_URIAGE.MEMBER_ID,_MST_SHOP.SHOP_FC_NO);
 				let _ICPOS_XML_MEMBER = await ICPOS_XML_MEMBER(JSON_TBL_URIAGE.MEMBER_ID,_MST_SHOP.SHOP_FC_NO, _MST_SHOP.SHOP_NM);
+				let _MULTIPLE_SEAT_USE = await MULTIPLE_SEAT_USE(JSON_TBL_URIAGE.MEMBER_ID);
+				if(!_ICPOS_XML_MEMBER) {
+					let _DELETE_MEMBER = await DELETE_MEMBER(JSON_TBL_URIAGE.MEMBER_ID);
+				}
 			}
 			REQUEST_LOG(req,`INFO: ${JSON.stringify(uploadJson)}`);
 			UPLOAD_SALES(uploadJson);
@@ -3064,6 +3103,63 @@ app.post('/api/paid', async (req,res) => {
 		}
 
 		
+	}
+
+	async function MULTIPLE_SEAT_USE(memberId) {
+		let multiple = false;
+		let SQL = "";
+		try {
+
+			SQL = "SELECT * FROM TBL_SEAT_STATUS S WHERE S.MEMBER_ID = @MEMBER_ID AND S.SEISAN_FLG = @SEISAN_FLG AND S.DELETE_FLG = @DELETE_FLG";
+			let TBL_SEAT_STATUS = await pool.request()
+			.input('MEMBER_ID',sql.VarChar,memberId)
+			.input('SEISAN_FLG',sql.Int,0)
+			.input('DELETE_FLG',sql.Int,0)
+			.query(SQL);
+			if(TBL_SEAT_STATUS.recordset.length > 0) {
+				multiple = true;
+			}
+
+		} catch(err) {
+				REQUEST_LOG(req,`ERROR: MULTIPLE_SEAT_USE ${err}`);
+				sql.close();
+				return res.status(200).send(CNST_ERROR_CODE.error_11);
+		}
+		return multiple;
+	}
+
+	async function DELETE_MEMBER(memberId) {
+		let success = false;
+		let SQL = "";
+		try {
+
+			SQL = "DELETE MST_MEMBER_BLACK WHERE MEMBER_ID=@MEMBER_ID";
+			let DELETE_MST_MEMBER_BLACK = await pool.request()
+			.input('MEMBER_ID',sql.VarChar,memberId)
+			.query(SQL);
+			if(DELETE_MST_MEMBER_BLACK.rowsAffected[0] == 1) {
+
+			}
+
+			SQL = "DELETE MST_MEMBER WHERE MEMBER_ID=@MEMBER_ID AND (UPLOAD_FLG = @UPLOAD_FLG OR (UPLOAD_FLG = @UPLOAD_FLG_TEMP AND TEMP_DEL_FLG = @TEMP_DEL_FLG) OR (UPLOAD_FLG = @UPLOAD_FLG_TEMP AND LOGIN_CNT = 0))";
+			let DELETE_MST_MEMBER = await pool.request()
+			.input('MEMBER_ID',sql.VarChar,memberId)
+			.input('UPLOAD_FLG',sql.VarChar,1)
+			.input('UPLOAD_FLG_TEMP',sql.VarChar,0)
+			.input('TEMP_DEL_FLG',sql.VarChar,1)
+			.query(SQL);
+			if(DELETE_MST_MEMBER.rowsAffected[0] == 1) {
+
+			}
+			REQUEST_LOG(req,`INFO: MST_MEMBER_BLACK ${DELETE_MST_MEMBER_BLACK.rowsAffected[0]} MST_MEMBER ${DELETE_MST_MEMBER.rowsAffected[0]}`);
+			success = true;
+
+		} catch(err) {
+				REQUEST_LOG(req,`ERROR: DELETE_MEMBER ${err}`);
+				sql.close();
+				return res.status(200).send(CNST_ERROR_CODE.error_11);
+		}
+		return success;
 	}
 
 	async function ICPOS_XML_MEMBER(memberID,shopFcNo,shopName) {
@@ -3175,6 +3271,7 @@ app.post('/api/paid', async (req,res) => {
 							success = true;
 						}
 					} else {
+						REQUEST_LOG(req,`X-SITE: uploaded to ICPOST inserted`);
 						success = true;
 					}
 					return success;
@@ -3322,8 +3419,9 @@ app.post('/api/paid', async (req,res) => {
 							return res.status(200).json(error);
 						}
 						REQUEST_LOG(req,`X-SITE: success ${JSON.stringify(uploadJson)}`);
-						sql.close();
-						return res.status(200).json(body);
+						success = true;
+						// sql.close();
+						// return res.status(200).json(body);
 					});
 
 				}
@@ -3336,6 +3434,7 @@ app.post('/api/paid', async (req,res) => {
 			sql.close();
 			return res.status(200).send(CNST_ERROR_CODE.error_11);
 		}
+		return success;
 	}
 
 	async function UPDATE_SEAT_STATUS(seatNo,seatStatus,staffId) {
@@ -4030,7 +4129,9 @@ app.post('/testme', async (req,res) => {
 	const pool = await sql.connect(config);
 
 	let _ICPOS_XML_MEMBER = await MULTIPLE_SEAT_USE('999979999999');
-	
+	if(_ICPOS_XML_MEMBER) {
+
+	}
 	sql.close();
 	return res.status(200).send(_ICPOS_XML_MEMBER);
 
